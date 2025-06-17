@@ -1,0 +1,43 @@
+# 1. インタラクティブモード（初心者向け・推奨）
+python scripts\main.py --interactive
+
+# 2. ヘルプ表示
+python scripts\main.py --help
+
+# 3. スクレイピングのみ実行
+python scripts\main.py --scrape
+
+# 4. 分析のみ実行
+python scripts\main.py --analyze
+
+# 5. 全工程一括実行（スクレイピング→分析）
+python scripts\main.py --all
+
+# 6. 利用可能データ一覧表示
+python scripts\main.py --list
+
+
+
+
+
+
+
+# 7. 特定車種の最新データを分析
+python scripts\main.py --analyze --car "GRヤリス" --latest
+
+# 8. 特定ファイルパスを指定して分析
+python scripts\main.py --analyze --path "data\scraped\GRヤリス\2025年06月17日\2025_06_17_GRヤリス.No1.csv"
+
+# 9. 特定車種（最新でない場合は選択画面）
+python scripts\main.py --analyze --car "レヴォーグ"
+
+
+
+# Step 1: まず利用可能なデータを確認
+python scripts\main.py --list
+
+# Step 2: データがない場合はスクレイピング実行
+python scripts\main.py --scrape
+
+# Step 3: 分析実行
+python scripts\main.py --analyze --latest
