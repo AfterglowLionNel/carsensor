@@ -550,7 +550,6 @@ export default function CarAnalysisDashboard() {
     const sliderRef = useRef(null);
 
     const handleTrackClick = (e) => {
-      if (e.target.tagName === 'INPUT') return;
       const rect = sliderRef.current.getBoundingClientRect();
       const clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
       let percent = (clientX - rect.left) / rect.width;
@@ -560,8 +559,12 @@ export default function CarAnalysisDashboard() {
       const distToMin = Math.abs(newValue - value[0]);
       const distToMax = Math.abs(newValue - value[1]);
       const index = distToMin <= distToMax ? 0 : 1;
+      ilzru0-codex/スライダーのポチ挙動修正
+      handleRangeChange(index, newValue);
+      setDragIndex(index);
       setDragIndex(index);
       handleRangeChange(index, newValue);
+      main
     };
     
     const handleRangeChange = (index, newValue) => {
@@ -636,7 +639,7 @@ export default function CarAnalysisDashboard() {
             appearance: 'none',
             cursor: 'pointer',
             zIndex: dragIndex === 0 ? 5 : 3,
-            pointerEvents: 'auto'
+            pointerEvents: 'none'
           }}
         />
         
@@ -667,7 +670,7 @@ export default function CarAnalysisDashboard() {
             appearance: 'none',
             cursor: 'pointer',
             zIndex: dragIndex === 1 ? 5 : 2,
-            pointerEvents: 'auto'
+            pointerEvents: 'none'
           }}
         />
         
@@ -2415,7 +2418,7 @@ export default function CarAnalysisDashboard() {
           appearance: none;
           background: transparent;
           cursor: pointer;
-          pointer-events: auto;
+          pointer-events: none;
         }
 
         input[type="range"]:focus {
