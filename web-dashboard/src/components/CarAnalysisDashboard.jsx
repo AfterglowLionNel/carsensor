@@ -39,6 +39,156 @@ export default function CarAnalysisDashboard() {
   const [selectedCarDetail, setSelectedCarDetail] = useState(null);
   const [showCarDetailModal, setShowCarDetailModal] = useState(false);
 
+  // 車種とファイル選択の状態を追加
+  const [selectedCarType, setSelectedCarType] = useState('');
+  const [selectedFile, setSelectedFile] = useState('');
+  const [availableCarTypes, setAvailableCarTypes] = useState(['F']); // RC Fのデフォルト
+  const [availableFiles, setAvailableFiles] = useState([]);
+  const [carTypeLoading, setCarTypeLoading] = useState(false);
+
+  // 利用可能な車種を読み込む関数
+  const loadAvailableCarTypes = async () => {
+    try {
+      setCarTypeLoading(true);
+      // デモ用のデータセット
+      const carTypes = ['F']; // RC F
+      setAvailableCarTypes(carTypes);
+      // デフォルトで RC F を選択
+      if (carTypes.length > 0) {
+        setSelectedCarType(carTypes[0]);
+      }
+    } catch (error) {
+      console.error('車種読み込みエラー:', error);
+    } finally {
+      setCarTypeLoading(false);
+    }
+  };
+
+  // 利用可能なファイルを読み込む関数
+  const loadAvailableFiles = async (carType) => {
+    try {
+      if (!carType) return;
+      
+      // 実際のデータファイルを検索 - publicフォルダ配下のパスに修正
+      const files = [
+        {
+          path: 'rc_f_data.json', // JSON形式のデータファイル
+          displayName: '2025年06月18日データ (79台)',
+          date: '2025-06-18'
+        }
+      ];
+      
+      setAvailableFiles(files);
+      // デフォルトで最初のファイルを選択
+      if (files.length > 0) {
+        setSelectedFile(files[0].path);
+      }
+    } catch (error) {
+      console.error('ファイル読み込みエラー:', error);
+    }
+  };
+
+  // 選択されたファイルを読み込む関数
+  const loadSelectedFile = async (filePath) => {
+    try {
+      if (!filePath) return;
+      
+      setLoading(true);
+      
+      // JSONファイルとCSVファイルの両方に対応
+      try {
+        const response = await fetch(`/data/${filePath}`);
+        if (response.ok) {
+          const contentType = response.headers.get('content-type');
+          
+          if (contentType && contentType.includes('application/json')) {
+            // JSONファイルの場合
+            const jsonData = await response.json();
+            console.log('JSON実データ読み込み:', jsonData.length, '件');
+            
+            // JSONデータを処理
+            const processedData = processCarData(jsonData);
+            setRawData(processedData);
+            setFileUploaded(true);
+            setLastUpdate(new Date().toLocaleString());
+            
+            // データ品質チェック
+            const quality = checkDataQuality(processedData);
+            setDataQuality(quality);
+            
+            // 初期フィルター設定
+            const uniqueGrades = [...new Set(processedData.map(item => 
+              showNormalizedGrades ? item.正規グレード : item.元グレード
+            ))].filter(Boolean);
+            setSelectedGrades(uniqueGrades);
+            
+            // 価格範囲を自動調整
+            const prices = processedData.map(item => item.price).filter(Boolean);
+            if (prices.length > 0) {
+              const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
+              const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
+              setPriceRange([minPrice, maxPrice]);
+            }
+            
+          } else {
+            // CSVファイルの場合
+            const csvText = await response.text();
+            Papa.parse(csvText, {
+              header: true,
+              encoding: 'UTF-8',
+              complete: (results) => {
+                console.log('CSV実データ読み込み:', results.data.length, '件');
+                const processedData = processCarData(results.data);
+                setRawData(processedData);
+                setFileUploaded(true);
+                setLastUpdate(new Date().toLocaleString());
+                
+                // データ品質チェック
+                const quality = checkDataQuality(processedData);
+                setDataQuality(quality);
+                
+                // 初期フィルター設定
+                const uniqueGrades = [...new Set(processedData.map(item => 
+                  showNormalizedGrades ? item.正規グレード : item.元グレード
+                ))].filter(Boolean);
+                setSelectedGrades(uniqueGrades);
+                
+                // 価格範囲を自動調整
+                const prices = processedData.map(item => item.price).filter(Boolean);
+                if (prices.length > 0) {
+                  const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
+                  const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
+                  setPriceRange([minPrice, maxPrice]);
+                }
+                
+                setLoading(false);
+              },
+              error: (error) => {
+                console.error('CSV解析エラー:', error);
+                setLoading(false);
+                alert('CSVファイルの読み込みに失敗しました。');
+              }
+            });
+          }
+          
+          setLoading(false);
+        } else {
+          console.error(`ファイルが見つかりません: ${filePath}`);
+          setLoading(false);
+          alert(`データファイルが見つかりません: ${filePath}\n\nファイルパス: /data/${filePath}`);
+        }
+      } catch (error) {
+        console.error('ファイル読み込みエラー:', error);
+        setLoading(false);
+        alert(`データファイルの読み込み中にエラーが発生しました。\n\nエラー: ${error.message}\nファイルパス: /data/${filePath}`);
+      }
+    } catch (error) {
+      console.error('loadSelectedFile エラー:', error);
+      setLoading(false);
+      alert('予期しないエラーが発生しました。');
+    }
+  };
+
   // データから日付を適切に取得する関数
   const getDateFromData = (item, mode) => {
     if (mode === 'scraping') {
@@ -56,104 +206,8 @@ export default function CarAnalysisDashboard() {
     }
   };
 
-  // サンプルデータ生成（2025年のスクレイピングデータに合わせる）
-  const generateSampleData = () => {
-    const grades = [
-      'RC カーボンエクステリアパッケージ',
-      'RC 5.0',
-      'RC パフォーマンスパッケージ',
-      'RC F 10th アニバーサリー',
-      'RC ファイナル エディション',
-      'RC エモーショナル ツーリング'
-    ];
-    
-    const normalizedGrades = [
-      'カーボンエクステリア',
-      '5.0',
-      'パフォーマンス',
-      '10th アニバーサリー',
-      'ファイナル エディション',
-      'エモーショナル ツーリング'
-    ];
-    
-    const years = [2014, 2015, 2016, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
-    const transmissions = [
-      'フロアMTモード付8AT',
-      'フロア8AT',
-      'フロア6MT',
-      'CVT',
-      'フロアMTモード付CVT'
-    ];
-    
-    const sampleData = [];
-    for (let i = 0; i < 80; i++) {
-      const gradeIndex = Math.floor(Math.random() * grades.length);
-      const year = years[Math.floor(Math.random() * years.length)];
-      const mileage = Math.random() * 150000;
-      
-      // より現実的な価格設定（万円単位で正確に）
-      let basePrice = 300;
-      if (normalizedGrades[gradeIndex].includes('エモーショナル') || normalizedGrades[gradeIndex].includes('ファイナル')) {
-        basePrice = 1200 + Math.random() * 400; // 1200-1600万円
-      } else if (normalizedGrades[gradeIndex].includes('10th')) {
-        basePrice = 900 + Math.random() * 200; // 900-1100万円
-      } else if (normalizedGrades[gradeIndex].includes('パフォーマンス')) {
-        basePrice = 800 + Math.random() * 100; // 800-900万円
-      } else if (normalizedGrades[gradeIndex].includes('カーボン')) {
-        basePrice = 600 + Math.random() * 100; // 600-700万円
-      } else {
-        basePrice = 300 + Math.random() * 200; // 300-500万円
-      }
-      
-      const yearFactor = Math.max(0.5, 1 - ((2025 - year) * 0.05));
-      const mileageFactor = Math.max(0.6, 1 - (mileage / 100000) * 0.2);
-      const price = Math.round(basePrice * yearFactor * mileageFactor * (0.8 + Math.random() * 0.4) * 10) / 10;
-      
-      // 2025年のスクレイピング日付（1-6月）
-      const month = Math.floor(Math.random() * 6) + 1;
-      const day = Math.floor(Math.random() * 28) + 1;
-      const scrapingDate = `2025-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      
-      sampleData.push({
-        車種名: 'F',
-        モデル: '情報なし',
-        グレード: grades[gradeIndex],
-        正規グレード: normalizedGrades[gradeIndex],
-        支払総額: `${price}万円`,
-        年式: `${year}(${year >= 2019 ? 'R' + String(year - 2018).padStart(2, '0') : 'H' + (year - 1988)})`,
-        走行距離: `${Math.round(mileage / 10000 * 10) / 10}万km`,
-        修復歴: Math.random() > 0.85 ? 'あり' : 'なし',
-        ミッション: transmissions[Math.floor(Math.random() * transmissions.length)],
-        排気量: '5000CC',
-        マッチング精度: 0.7 + Math.random() * 0.3,
-        取得日時: `${scrapingDate}T${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:11.583278`,
-        ソースURL: 'https://www.carsensor.net/usedcar/bLE/s016/index.html'
-      });
-    }
-    
-    const processedData = processCarData(sampleData);
-    setRawData(processedData);
-    setFileUploaded(false);
-    setLastUpdate(new Date().toLocaleString());
-    
-    // データ品質チェック
-    const quality = checkDataQuality(processedData);
-    setDataQuality(quality);
-    
-    // 初期フィルター設定
-    const uniqueGrades = [...new Set(processedData.map(item => 
-      showNormalizedGrades ? item.正規グレード : item.元グレード
-    ))].filter(Boolean);
-    setSelectedGrades(uniqueGrades);
-    
-    // 価格範囲を自動調整
-    const prices = processedData.map(item => item.price).filter(Boolean);
-    if (prices.length > 0) {
-      const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
-      const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
-      setPriceRange([minPrice, maxPrice]);
-    }
-  };
+  // サンプルデータ生成を削除（実データのみ使用）
+  // generateSampleData関数は削除
 
   // CSVファイルアップロード処理
   const handleFileUpload = (event) => {
@@ -1998,7 +2052,7 @@ export default function CarAnalysisDashboard() {
                                 <strong>修復歴:</strong> {data.修復歴}
                               </p>
                               <p style={{ fontSize: '14px', margin: '0' }}>
-                                <strong>ソースURL:</strong> 
+                                <strong>詳細を見る:</strong> 
                                 <a 
                                   href={data.車両URL || data.ソースURL} 
                                   target="_blank" 
@@ -2009,7 +2063,7 @@ export default function CarAnalysisDashboard() {
                                     marginLeft: '8px'
                                   }}
                                 >
-                                  詳細を見る
+                                  カーセンサーで確認
                                 </a>
                               </p>
                             </div>
@@ -2217,7 +2271,7 @@ export default function CarAnalysisDashboard() {
               </div>
 
               {/* カーセンサー詳細リンク */}
-              {selectedCarDetail.車両URL && (
+              {(selectedCarDetail.車両URL || selectedCarDetail.ソースURL) && (
                 <div style={{
                   marginTop: '16px',
                   padding: '16px',
@@ -2230,7 +2284,7 @@ export default function CarAnalysisDashboard() {
                   </h4>
                   <div style={{ fontSize: '14px' }}>
                     <a 
-                      href={selectedCarDetail.車両URL} 
+                      href={selectedCarDetail.車両URL || selectedCarDetail.ソースURL} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       style={{
@@ -2248,6 +2302,11 @@ export default function CarAnalysisDashboard() {
                     >
                       🔗 カーセンサーで詳細を見る
                     </a>
+                    {selectedCarDetail.車両URL && (
+                      <div style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>
+                        個別車両ページ: {selectedCarDetail.車両URL}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
