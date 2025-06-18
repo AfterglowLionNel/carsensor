@@ -2023,8 +2023,9 @@ export default function CarAnalysisDashboard() {
                       label={{ value: '価格 (万円)', angle: -90, position: 'insideLeft' }}
                       stroke="#666"
                     />
-                    <Tooltip 
+                    <Tooltip
                       cursor={{ strokeDasharray: '3 3' }}
+                      wrapperStyle={{ pointerEvents: 'auto' }}
                       content={({ active, payload }) => {
                         if (active && payload && payload.length > 0) {
                           const data = payload[0].payload;
