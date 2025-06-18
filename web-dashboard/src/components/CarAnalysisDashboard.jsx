@@ -338,7 +338,9 @@ export default function CarAnalysisDashboard() {
       let key;
       
       if (trendDateMode === 'scraping') {
-        if (timeScale === 'monthly') {
+        if (timeScale === 'daily') {
+          key = dateStr.substring(0, 10); // YYYY-MM-DD
+        } else if (timeScale === 'monthly') {
           key = dateStr.substring(0, 7); // YYYY-MM
         } else {
           key = dateStr.substring(0, 4); // YYYY
@@ -368,6 +370,66 @@ export default function CarAnalysisDashboard() {
       })
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredData, timeScale, trendDateMode]);
+
+  // 価格推移から単純回帰で予測値を生成
+  const forecastData = useMemo(() => {
+    if (trendDateMode !== 'scraping' || trendData.length < 2) return [];
+
+    const n = trendData.length;
+    const sumX = trendData.reduce((acc, _, i) => acc + i, 0);
+    const sumY = trendData.reduce((acc, d) => acc + d.avgPrice, 0);
+    const sumXY = trendData.reduce((acc, d, i) => acc + i * d.avgPrice, 0);
+    const sumX2 = trendData.reduce((acc, _, i) => acc + i * i, 0);
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    const parseDateString = (str) => {
+      if (timeScale === 'yearly') return new Date(`${str}-01-01`);
+      if (timeScale === 'monthly') return new Date(`${str}-01`);
+      return new Date(str);
+    };
+
+    const formatDate = (date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      if (timeScale === 'yearly') return `${y}`;
+      if (timeScale === 'monthly') return `${y}-${m}`;
+      return `${y}-${m}-${d}`;
+    };
+
+    const lastDate = parseDateString(trendData[trendData.length - 1].date);
+    const results = [];
+    for (let i = 1; i <= 3; i++) {
+      const idx = n + i - 1;
+      const forecastPrice = Math.round((slope * idx + intercept) * 10) / 10;
+      const nextDate = new Date(lastDate.getTime());
+      if (timeScale === 'yearly') {
+        nextDate.setFullYear(nextDate.getFullYear() + i);
+      } else if (timeScale === 'monthly') {
+        nextDate.setMonth(nextDate.getMonth() + i);
+      } else {
+        nextDate.setDate(nextDate.getDate() + i);
+      }
+      results.push({
+        date: formatDate(nextDate),
+        forecastPrice,
+        avgPrice: null,
+        maxPrice: null,
+        minPrice: null,
+        median: null
+      });
+    }
+    return results;
+  }, [trendData, timeScale, trendDateMode]);
+
+  const trendDataWithForecast = useMemo(
+    () =>
+      trendDateMode === 'scraping'
+        ? [...trendData, ...forecastData]
+        : trendData,
+    [trendData, forecastData, trendDateMode]
+  );
 
   // グレード別分析データ
   const gradeAnalysisData = useMemo(() => {
@@ -1761,7 +1823,7 @@ export default function CarAnalysisDashboard() {
                     {/* 時間軸切り替え（スクレイピング日基準の場合のみ） */}
                     {trendDateMode === 'scraping' && (
                       <div style={{ display: 'flex', gap: '4px' }}>
-                        {['monthly', 'yearly'].map(scale => (
+                        {['daily', 'monthly', 'yearly'].map(scale => (
                           <button
                             key={scale}
                             onClick={() => setTimeScale(scale)}
@@ -1775,7 +1837,11 @@ export default function CarAnalysisDashboard() {
                               color: timeScale === scale ? 'white' : '#374751'
                             }}
                           >
-                            {scale === 'monthly' ? '月次' : '年次'}
+                            {scale === 'daily'
+                              ? '日次'
+                              : scale === 'monthly'
+                              ? '月次'
+                              : '年次'}
                           </button>
                         ))}
                       </div>
@@ -1783,7 +1849,7 @@ export default function CarAnalysisDashboard() {
                   </div>
                 </div>
                 <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={trendData}>
+                  <LineChart data={trendDateMode === 'scraping' ? trendDataWithForecast : trendData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="date" stroke="#666" />
                     <YAxis label={{ value: '価格 (万円)', angle: -90, position: 'insideLeft' }} stroke="#666" />
@@ -1818,20 +1884,34 @@ export default function CarAnalysisDashboard() {
                       strokeDasharray="2 2"
                       dot={false}
                     />
-                    <Line 
-                      type="monotone" 
-                      dataKey="minPrice" 
-                      stroke="#f59e0b" 
+                    <Line
+                      type="monotone"
+                      dataKey="minPrice"
+                      stroke="#f59e0b"
                       strokeWidth={1}
                       name="最低価格"
                       strokeDasharray="2 2"
                       dot={false}
                     />
+                    {trendDateMode === 'scraping' && (
+                      <Line
+                        type="monotone"
+                        dataKey="forecastPrice"
+                        stroke="#6366f1"
+                        strokeWidth={2}
+                        name="予想平均価格"
+                        strokeDasharray="3 3"
+                        dot={{ stroke: '#6366f1', fill: '#fff', r: 3 }}
+                      />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
                 <div style={{ marginTop: '16px', fontSize: '14px', color: '#6b7280' }}>
                   <p>💡 {trendDateMode === 'scraping' ? 'スクレイピング取得日' : '年式'}を基準とした価格推移です</p>
-                  <p>📈 青線：平均価格、緑破線：中央値、赤破線：最高価格、橙破線：最低価格</p>
+                  <p>
+                    📈 青線：平均価格、緑破線：中央値、赤破線：最高価格、橙破線：最低価格
+                    {trendDateMode === 'scraping' && '、紫破線：予想平均価格'}
+                  </p>
                 </div>
               </div>
             )}
