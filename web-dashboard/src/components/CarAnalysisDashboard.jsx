@@ -20,7 +20,6 @@ export default function CarAnalysisDashboard() {
   const [viewMode, setViewMode] = useState('overview');
   const [overviewMode, setOverviewMode] = useState('all');
   const [timeScale, setTimeScale] = useState('monthly');
-  const [trendDateMode, setTrendDateMode] = useState('scraping'); // 'scraping' or 'year'
   const [selectedGrades, setSelectedGrades] = useState([]);
   const [yearRange, setYearRange] = useState({ min: 2014, max: 2025 });
   const [mileageMax, setMileageMax] = useState(200000);
@@ -194,20 +193,15 @@ export default function CarAnalysisDashboard() {
   };
 
   // データから日付を適切に取得する関数
-  const getDateFromData = (item, mode) => {
-    if (mode === 'scraping') {
-      // スクレイピング取得日を使用
-      if (item.取得日時) {
-        return item.取得日時.substring(0, 10); // YYYY-MM-DD形式
-      }
-      // フォールバック: 2025年の日付を生成
-      const month = Math.floor(Math.random() * 6) + 1; // 1-6月
-      const day = Math.floor(Math.random() * 28) + 1;
-      return `2025-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    } else {
-      // 年式を使用
-      return `${item.year}-01-01`;
+  const getDateFromData = (item) => {
+    // スクレイピング取得日を使用
+    if (item.取得日時) {
+      return item.取得日時.substring(0, 10); // YYYY-MM-DD形式
     }
+    // フォールバック: 2025年の日付を生成
+    const month = Math.floor(Math.random() * 6) + 1; // 1-6月
+    const day = Math.floor(Math.random() * 28) + 1;
+    return `2025-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   };
 
   // サンプルデータ生成を削除（実データのみ使用）
@@ -350,20 +344,15 @@ export default function CarAnalysisDashboard() {
     
     const grouped = {};
     filteredData.forEach(item => {
-      const dateStr = getDateFromData(item, trendDateMode);
+      const dateStr = getDateFromData(item);
       let key;
-      
-      if (trendDateMode === 'scraping') {
-        if (timeScale === 'daily') {
-          key = dateStr.substring(0, 10); // YYYY-MM-DD
-        } else if (timeScale === 'monthly') {
-          key = dateStr.substring(0, 7); // YYYY-MM
-        } else {
-          key = dateStr.substring(0, 4); // YYYY
-        }
+
+      if (timeScale === 'daily') {
+        key = dateStr.substring(0, 10); // YYYY-MM-DD
+      } else if (timeScale === 'monthly') {
+        key = dateStr.substring(0, 7); // YYYY-MM
       } else {
-        // 年式基準の場合
-        key = item.year.toString();
+        key = dateStr.substring(0, 4); // YYYY
       }
       
       if (!grouped[key]) {
@@ -385,7 +374,7 @@ export default function CarAnalysisDashboard() {
         };
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredData, timeScale, trendDateMode]);
+  }, [filteredData, timeScale]);
 
   // 価格推移から単純回帰で予測値を生成
   const forecastData = useMemo(() => {
@@ -1826,62 +1815,28 @@ export default function CarAnalysisDashboard() {
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {/* 日付基準切り替え */}
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <button
-                        onClick={() => setTrendDateMode('scraping')}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          backgroundColor: trendDateMode === 'scraping' ? '#10b981' : '#f3f4f6',
-                          color: trendDateMode === 'scraping' ? 'white' : '#374751'
-                        }}
-                      >
-                        取得日基準
-                      </button>
-                      <button
-                        onClick={() => setTrendDateMode('year')}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          backgroundColor: trendDateMode === 'year' ? '#10b981' : '#f3f4f6',
-                          color: trendDateMode === 'year' ? 'white' : '#374751'
-                        }}
-                      >
-                        年式基準
-                      </button>
+                      {['daily', 'monthly', 'yearly'].map(scale => (
+                        <button
+                          key={scale}
+                          onClick={() => setTimeScale(scale)}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            fontSize: '12px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            backgroundColor: timeScale === scale ? '#3b82f6' : '#f3f4f6',
+                            color: timeScale === scale ? 'white' : '#374751'
+                          }}
+                        >
+                          {scale === 'daily'
+                            ? '日次'
+                            : scale === 'monthly'
+                            ? '月次'
+                            : '年次'}
+                        </button>
+                      ))}
                     </div>
-                    
-                    {/* 時間軸切り替え（スクレイピング日基準の場合のみ） */}
-                    {trendDateMode === 'scraping' && (
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        {['daily', 'monthly', 'yearly'].map(scale => (
-                          <button
-                            key={scale}
-                            onClick={() => setTimeScale(scale)}
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: '4px',
-                              fontSize: '12px',
-                              border: 'none',
-                              cursor: 'pointer',
-                              backgroundColor: timeScale === scale ? '#3b82f6' : '#f3f4f6',
-                              color: timeScale === scale ? 'white' : '#374751'
-                            }}
-                          >
-                            {scale === 'daily'
-                              ? '日次'
-                              : scale === 'monthly'
-                              ? '月次'
-                              : '年次'}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
                 <ResponsiveContainer width="100%" height={400}>
@@ -1941,7 +1896,7 @@ export default function CarAnalysisDashboard() {
                   </LineChart>
                 </ResponsiveContainer>
                 <div style={{ marginTop: '16px', fontSize: '14px', color: '#6b7280' }}>
-                  <p>💡 {trendDateMode === 'scraping' ? 'スクレイピング取得日' : '年式'}を基準とした価格推移です</p>
+                  <p>💡 取得日を基準とした価格推移です</p>
                   <p>📈 青線：平均価格、緑破線：中央値、赤破線：最高価格、橙破線：最低価格、紫破線：予想平均価格</p>
                 </div>
               </div>
