@@ -1,13 +1,296 @@
-// 価格推移データ
+import React, { useState, useEffect, useMemo } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ScatterChart, Scatter, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { Car, TrendingUp, BarChart3, MapPin, Filter, Upload, Download, RefreshCw, AlertCircle, CheckCircle, Calendar } from 'lucide-react';
+import Papa from 'papaparse';
+import { 
+  processCarData, 
+  calculatePriceStats, 
+  exportToCSV, 
+  checkDataQuality,
+  convertToLegacyFormat,
+  parsePrice,
+  parseYear,
+  parseMileage,
+  categorizeTransmission
+} from '../utils/dataProcessor';
+
+export default function CarAnalysisDashboard() {
+  const [rawData, setRawData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState('overview');
+  const [overviewMode, setOverviewMode] = useState('all');
+  const [timeScale, setTimeScale] = useState('monthly');
+  const [trendDateMode, setTrendDateMode] = useState('scraping'); // 'scraping' or 'year'
+  const [selectedGrades, setSelectedGrades] = useState([]);
+  const [yearRange, setYearRange] = useState({ min: 2014, max: 2025 });
+  const [mileageMax, setMileageMax] = useState(200000);
+  const [priceRange, setPriceRange] = useState([0, 2000]); // 配列形式に変更
+  const [transmissionFilters, setTransmissionFilters] = useState({
+    AT: true,
+    CVT: true,  
+    MT: true,
+    other: true
+  });
+  const [repairHistoryFilter, setRepairHistoryFilter] = useState('all');
+  const [showNormalizedGrades, setShowNormalizedGrades] = useState(true);
+  const [fileUploaded, setFileUploaded] = useState(false);
+  const [dataQuality, setDataQuality] = useState(null);
+  const [lastUpdate, setLastUpdate] = useState(null);
+  const [selectedCarDetail, setSelectedCarDetail] = useState(null);
+  const [showCarDetailModal, setShowCarDetailModal] = useState(false);
+
+  // データから日付を適切に取得する関数
+  const getDateFromData = (item, mode) => {
+    if (mode === 'scraping') {
+      // スクレイピング取得日を使用
+      if (item.取得日時) {
+        return item.取得日時.substring(0, 10); // YYYY-MM-DD形式
+      }
+      // フォールバック: 2025年の日付を生成
+      const month = Math.floor(Math.random() * 6) + 1; // 1-6月
+      const day = Math.floor(Math.random() * 28) + 1;
+      return `2025-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    } else {
+      // 年式を使用
+      return `${item.year}-01-01`;
+    }
+  };
+
+  // サンプルデータ生成（2025年のスクレイピングデータに合わせる）
+  const generateSampleData = () => {
+    const grades = [
+      'RC カーボンエクステリアパッケージ',
+      'RC 5.0',
+      'RC パフォーマンスパッケージ',
+      'RC F 10th アニバーサリー',
+      'RC ファイナル エディション',
+      'RC エモーショナル ツーリング'
+    ];
+    
+    const normalizedGrades = [
+      'カーボンエクステリア',
+      '5.0',
+      'パフォーマンス',
+      '10th アニバーサリー',
+      'ファイナル エディション',
+      'エモーショナル ツーリング'
+    ];
+    
+    const years = [2014, 2015, 2016, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
+    const transmissions = [
+      'フロアMTモード付8AT',
+      'フロア8AT',
+      'フロア6MT',
+      'CVT',
+      'フロアMTモード付CVT'
+    ];
+    
+    const sampleData = [];
+    for (let i = 0; i < 80; i++) {
+      const gradeIndex = Math.floor(Math.random() * grades.length);
+      const year = years[Math.floor(Math.random() * years.length)];
+      const mileage = Math.random() * 150000;
+      
+      // より現実的な価格設定（万円単位で正確に）
+      let basePrice = 300;
+      if (normalizedGrades[gradeIndex].includes('エモーショナル') || normalizedGrades[gradeIndex].includes('ファイナル')) {
+        basePrice = 1200 + Math.random() * 400; // 1200-1600万円
+      } else if (normalizedGrades[gradeIndex].includes('10th')) {
+        basePrice = 900 + Math.random() * 200; // 900-1100万円
+      } else if (normalizedGrades[gradeIndex].includes('パフォーマンス')) {
+        basePrice = 800 + Math.random() * 100; // 800-900万円
+      } else if (normalizedGrades[gradeIndex].includes('カーボン')) {
+        basePrice = 600 + Math.random() * 100; // 600-700万円
+      } else {
+        basePrice = 300 + Math.random() * 200; // 300-500万円
+      }
+      
+      const yearFactor = Math.max(0.5, 1 - ((2025 - year) * 0.05));
+      const mileageFactor = Math.max(0.6, 1 - (mileage / 100000) * 0.2);
+      const price = Math.round(basePrice * yearFactor * mileageFactor * (0.8 + Math.random() * 0.4) * 10) / 10;
+      
+      // 2025年のスクレイピング日付（1-6月）
+      const month = Math.floor(Math.random() * 6) + 1;
+      const day = Math.floor(Math.random() * 28) + 1;
+      const scrapingDate = `2025-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      
+      sampleData.push({
+        車種名: 'F',
+        モデル: '情報なし',
+        グレード: grades[gradeIndex],
+        正規グレード: normalizedGrades[gradeIndex],
+        支払総額: `${price}万円`,
+        年式: `${year}(${year >= 2019 ? 'R' + String(year - 2018).padStart(2, '0') : 'H' + (year - 1988)})`,
+        走行距離: `${Math.round(mileage / 10000 * 10) / 10}万km`,
+        修復歴: Math.random() > 0.85 ? 'あり' : 'なし',
+        ミッション: transmissions[Math.floor(Math.random() * transmissions.length)],
+        排気量: '5000CC',
+        マッチング精度: 0.7 + Math.random() * 0.3,
+        取得日時: `${scrapingDate}T${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}:11.583278`,
+        ソースURL: 'https://www.carsensor.net/usedcar/bLE/s016/index.html'
+      });
+    }
+    
+    const processedData = processCarData(sampleData);
+    setRawData(processedData);
+    setFileUploaded(false);
+    setLastUpdate(new Date().toLocaleString());
+    
+    // データ品質チェック
+    const quality = checkDataQuality(processedData);
+    setDataQuality(quality);
+    
+    // 初期フィルター設定
+    const uniqueGrades = [...new Set(processedData.map(item => 
+      showNormalizedGrades ? item.正規グレード : item.元グレード
+    ))].filter(Boolean);
+    setSelectedGrades(uniqueGrades);
+    
+    // 価格範囲を自動調整
+    const prices = processedData.map(item => item.price).filter(Boolean);
+    if (prices.length > 0) {
+      const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
+      const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
+      setPriceRange([minPrice, maxPrice]);
+    }
+  };
+
+  // CSVファイルアップロード処理
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setLoading(true);
+    Papa.parse(file, {
+      header: true,
+      encoding: 'UTF-8',
+      complete: (results) => {
+        console.log('アップロードされたCSV:', results.data);
+        const processedData = processCarData(results.data);
+        setRawData(processedData);
+        setFileUploaded(true);
+        setLastUpdate(new Date().toLocaleString());
+        
+        // データ品質チェック
+        const quality = checkDataQuality(processedData);
+        setDataQuality(quality);
+        
+        // 初期フィルター設定
+        const uniqueGrades = [...new Set(processedData.map(item => 
+          showNormalizedGrades ? item.正規グレード : item.元グレード
+        ))].filter(Boolean);
+        setSelectedGrades(uniqueGrades);
+        
+        // 価格範囲を自動調整
+        const prices = processedData.map(item => item.price).filter(Boolean);
+        if (prices.length > 0) {
+          const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
+          const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
+          setPriceRange([minPrice, maxPrice]);
+        }
+        
+        setLoading(false);
+      },
+      error: (error) => {
+        console.error('CSV解析エラー:', error);
+        setLoading(false);
+        alert('CSVファイルの読み込みに失敗しました。');
+      }
+    });
+  };
+
+  // 初期化処理
+  useEffect(() => {
+    loadAvailableCarTypes();
+  }, []);
+
+  // 車種選択時の処理
+  useEffect(() => {
+    if (selectedCarType) {
+      loadAvailableFiles(selectedCarType);
+    }
+  }, [selectedCarType]);
+
+  // ファイル選択時の処理
+  useEffect(() => {
+    if (selectedFile) {
+      loadSelectedFile(selectedFile);
+    }
+  }, [selectedFile]);
+
+  // データソース別処理
+  const processedData = useMemo(() => {
+    if (overviewMode === 'latest') {
+      const latestData = rawData.filter((item, index, self) => {
+        return index === self.findIndex(t => 
+          t.price === item.price && 
+          t.year === item.year && 
+          t.mileage === item.mileage && 
+          t.正規グレード === item.正規グレード
+        );
+      });
+      return latestData.slice(-50);
+    } else {
+      const allData = rawData.filter((item, index, self) => {
+        return index === self.findIndex(t => 
+          t.price === item.price && 
+          t.year === item.year && 
+          t.mileage === item.mileage && 
+          t.正規グレード === item.正規グレード
+        );
+      });
+      return allData;
+    }
+  }, [rawData, overviewMode]);
+
+  // フィルター適用後のデータ
+  const filteredData = useMemo(() => {
+    return processedData.filter(item => {
+      const targetGrade = showNormalizedGrades ? item.正規グレード : item.元グレード;
+      
+      // グレードフィルター
+      if (selectedGrades.length > 0 && !selectedGrades.includes(targetGrade)) return false;
+      
+      // 年式フィルター
+      if (item.year < yearRange.min || item.year > yearRange.max) return false;
+      
+      // 走行距離フィルター
+      if (item.mileage > mileageMax) return false;
+      
+      // 価格フィルター（配列形式）
+      if (item.price < priceRange[0] || item.price > priceRange[1]) return false;
+      
+      // ミッションフィルター（チェックボックス形式）
+      const transmissionCategory = categorizeTransmission(item.ミッション);
+      if (!transmissionFilters[transmissionCategory]) return false;
+      
+      // 修復歴フィルター
+      if (repairHistoryFilter !== 'all') {
+        if (repairHistoryFilter === 'none' && item.修復歴 !== 'なし') return false;
+        if (repairHistoryFilter === 'exists' && item.修復歴 !== 'あり') return false;
+      }
+      
+      return true;
+    });
+  }, [processedData, selectedGrades, yearRange, mileageMax, priceRange, transmissionFilters, repairHistoryFilter, showNormalizedGrades]);
+
+  // 価格推移データの生成（日付モード対応）
   const trendData = useMemo(() => {
     if (filteredData.length === 0) return [];
     
     const grouped = {};
     filteredData.forEach(item => {
+      const dateStr = getDateFromData(item, trendDateMode);
       let key;
-      if (timeScale === 'monthly') {
-        key = item.date.substring(0, 7);
+      
+      if (trendDateMode === 'scraping') {
+        if (timeScale === 'monthly') {
+          key = dateStr.substring(0, 7); // YYYY-MM
+        } else {
+          key = dateStr.substring(0, 4); // YYYY
+        }
       } else {
+        // 年式基準の場合
         key = item.year.toString();
       }
       
@@ -30,7 +313,7 @@
         };
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredData, timeScale]);
+  }, [filteredData, timeScale, trendDateMode]);
 
   // グレード別分析データ
   const gradeAnalysisData = useMemo(() => {
@@ -70,219 +353,7 @@
         };
       })
       .sort((a, b) => b.avgPrice - a.avgPrice);
-  }, [filteredData, showNormalizedGrades]);import React, { useState, useEffect, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ScatterChart, Scatter, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
-import { Car, TrendingUp, BarChart3, MapPin, Filter, Upload, Download, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
-import Papa from 'papaparse';
-import { 
-  processCarData, 
-  calculatePriceStats, 
-  exportToCSV, 
-  checkDataQuality,
-  convertToLegacyFormat 
-} from '../utils/dataProcessor';
-
-export default function CarAnalysisDashboard() {
-  const [rawData, setRawData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState('overview');
-  const [overviewMode, setOverviewMode] = useState('all'); // 'all' or 'latest'
-  const [timeScale, setTimeScale] = useState('monthly');
-  const [selectedGrades, setSelectedGrades] = useState([]);
-  const [yearRange, setYearRange] = useState({ min: 2014, max: 2025 });
-  const [mileageMax, setMileageMax] = useState(200000);
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 2000 });
-  const [transmissionFilter, setTransmissionFilter] = useState('all');
-  const [repairHistoryFilter, setRepairHistoryFilter] = useState('all');
-  const [showNormalizedGrades, setShowNormalizedGrades] = useState(true);
-  const [fileUploaded, setFileUploaded] = useState(false);
-  const [dataQuality, setDataQuality] = useState(null);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const [selectedCarDetail, setSelectedCarDetail] = useState(null);
-  const [showCarDetailModal, setShowCarDetailModal] = useState(false);
-
-  // サンプルデータ生成（既存CSVデータの構造に合わせる）
-  const generateSampleData = () => {
-    const grades = [
-      'RC カーボンエクステリアパッケージ',
-      'RC 5.0',
-      'RC パフォーマンスパッケージ',
-      'RC F 10th アニバーサリー',
-      'RC ファイナル エディション',
-      'RC エモーショナル ツーリング'
-    ];
-    
-    const normalizedGrades = [
-      'カーボンエクステリア',
-      '5.0',
-      'パフォーマンス',
-      '10th アニバーサリー',
-      'ファイナル エディション',
-      'エモーショナル ツーリング'
-    ];
-    
-    const years = [2014, 2015, 2016, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
-    const transmissions = ['フロアMTモード付8AT', 'フロア8AT'];
-    
-    const sampleData = [];
-    for (let i = 0; i < 80; i++) {
-      const gradeIndex = Math.floor(Math.random() * grades.length);
-      const year = years[Math.floor(Math.random() * years.length)];
-      const mileage = Math.random() * 150000;
-      
-      // より現実的な価格設定
-      let basePrice = 300;
-      if (normalizedGrades[gradeIndex].includes('エモーショナル') || normalizedGrades[gradeIndex].includes('ファイナル')) {
-        basePrice = 1200;
-      } else if (normalizedGrades[gradeIndex].includes('10th')) {
-        basePrice = 900;
-      } else if (normalizedGrades[gradeIndex].includes('パフォーマンス')) {
-        basePrice = 800;
-      } else if (normalizedGrades[gradeIndex].includes('カーボン')) {
-        basePrice = 600;
-      }
-      
-      const yearFactor = Math.max(0.5, 1 - ((2025 - year) * 0.05));
-      const mileageFactor = Math.max(0.6, 1 - (mileage / 100000) * 0.2);
-      const price = Math.round(basePrice * yearFactor * mileageFactor * (0.8 + Math.random() * 0.4) * 10) / 10;
-      
-      const month = Math.floor(Math.random() * 12) + 1;
-      const day = Math.floor(Math.random() * 28) + 1;
-      
-      sampleData.push({
-        車種名: 'F',
-        モデル: '情報なし',
-        グレード: grades[gradeIndex],
-        正規グレード: normalizedGrades[gradeIndex],
-        支払総額: `${price}万円`,
-        年式: `${year}(${year >= 2019 ? 'R' + String(year - 2018).padStart(2, '0') : 'H' + (year - 1988)})`,
-        走行距離: `${Math.round(mileage / 10000 * 10) / 10}万km`,
-        修復歴: Math.random() > 0.85 ? 'あり' : 'なし',
-        ミッション: transmissions[Math.floor(Math.random() * transmissions.length)],
-        排気量: '5000CC',
-        マッチング精度: 0.7 + Math.random() * 0.3,
-        取得日時: `2024-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:45:11.583278`,
-        ソースURL: 'https://www.carsensor.net/usedcar/bLE/s016/index.html'
-      });
-    }
-    
-    const processedData = processCarData(sampleData);
-    setRawData(processedData);
-    setFileUploaded(false);
-    setLastUpdate(new Date().toLocaleString());
-    
-    // データ品質チェック
-    const quality = checkDataQuality(processedData);
-    setDataQuality(quality);
-    
-    // 初期フィルター設定
-    const uniqueGrades = [...new Set(processedData.map(item => 
-      showNormalizedGrades ? item.正規グレード : item.元グレード
-    ))].filter(Boolean);
-    setSelectedGrades(uniqueGrades);
-  };
-
-  // CSVファイルアップロード処理
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    setLoading(true);
-    Papa.parse(file, {
-      header: true,
-      encoding: 'UTF-8',
-      complete: (results) => {
-        console.log('アップロードされたCSV:', results.data);
-        const processedData = processCarData(results.data);
-        setRawData(processedData);
-        setFileUploaded(true);
-        setLastUpdate(new Date().toLocaleString());
-        
-        // データ品質チェック
-        const quality = checkDataQuality(processedData);
-        setDataQuality(quality);
-        
-        // 初期フィルター設定
-        const uniqueGrades = [...new Set(processedData.map(item => 
-          showNormalizedGrades ? item.正規グレード : item.元グレード
-        ))].filter(Boolean);
-        setSelectedGrades(uniqueGrades);
-        setLoading(false);
-      },
-      error: (error) => {
-        console.error('CSV解析エラー:', error);
-        setLoading(false);
-        alert('CSVファイルの読み込みに失敗しました。');
-      }
-    });
-  };
-
-  // 初期データ読み込み
-  useEffect(() => {
-    generateSampleData();
-  }, []);
-
-  // データソース別処理
-  const processedData = useMemo(() => {
-    if (overviewMode === 'latest') {
-      // 最新データのみ（重複除去）
-      const latestData = rawData.filter((item, index, self) => {
-        // 同じ車両（価格、年式、走行距離、グレードが同じ）の重複を除去
-        return index === self.findIndex(t => 
-          t.price === item.price && 
-          t.year === item.year && 
-          t.mileage === item.mileage && 
-          t.正規グレード === item.正規グレード
-        );
-      });
-      return latestData.slice(-50); // 最新50件程度
-    } else {
-      // 全期間データ（重複除去）
-      const allData = rawData.filter((item, index, self) => {
-        return index === self.findIndex(t => 
-          t.price === item.price && 
-          t.year === item.year && 
-          t.mileage === item.mileage && 
-          t.正規グレード === item.正規グレード
-        );
-      });
-      return allData;
-    }
-  }, [rawData, overviewMode]);
-
-  // フィルター適用後のデータ
-  const filteredData = useMemo(() => {
-    return processedData.filter(item => {
-      const targetGrade = showNormalizedGrades ? item.正規グレード : item.元グレード;
-      
-      // グレードフィルター
-      if (selectedGrades.length > 0 && !selectedGrades.includes(targetGrade)) return false;
-      
-      // 年式フィルター
-      if (item.year < yearRange.min || item.year > yearRange.max) return false;
-      
-      // 走行距離フィルター
-      if (item.mileage > mileageMax) return false;
-      
-      // 価格フィルター
-      if (item.price < priceRange.min || item.price > priceRange.max) return false;
-      
-      // ミッションフィルター
-      if (transmissionFilter !== 'all') {
-        if (transmissionFilter === 'mt' && !item.ミッション.toLowerCase().includes('mt')) return false;
-        if (transmissionFilter === 'at' && !item.ミッション.toLowerCase().includes('at')) return false;
-        if (transmissionFilter === 'cvt' && !item.ミッション.toLowerCase().includes('cvt')) return false;
-      }
-      
-      // 修復歴フィルター
-      if (repairHistoryFilter !== 'all') {
-        if (repairHistoryFilter === 'none' && item.修復歴 !== 'なし') return false;
-        if (repairHistoryFilter === 'exists' && item.修復歴 !== 'あり') return false;
-      }
-      
-      return true;
-    });
-  }, [processedData, selectedGrades, yearRange, mileageMax, priceRange, transmissionFilter, repairHistoryFilter, showNormalizedGrades]);
+  }, [filteredData, showNormalizedGrades]);
 
   // 年式分布データ
   const yearDistributionData = useMemo(() => {
@@ -339,6 +410,14 @@ export default function CarAnalysisDashboard() {
     setSelectedGrades(uniqueGrades);
   };
 
+  // ミッション切り替え
+  const handleTransmissionToggle = (category) => {
+    setTransmissionFilters(prev => ({
+      ...prev,
+      [category]: !prev[category]
+    }));
+  };
+
   // 車両詳細クリック処理
   const handleCarClick = (carData) => {
     setSelectedCarDetail(carData);
@@ -351,7 +430,139 @@ export default function CarAnalysisDashboard() {
     exportToCSV(exportData, `rc_f_analysis_${new Date().toISOString().split('T')[0]}.csv`);
   };
 
-  if (loading) {
+  // 統合レンジスライダーコンポーネント（完全修正版）
+  const RangeSlider = ({ min, max, value, onChange, step = 1, unit = '' }) => {
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragIndex, setDragIndex] = useState(null);
+    
+    const handleRangeChange = (index, newValue) => {
+      const numValue = parseInt(newValue);
+      const newRange = [...value];
+      
+      if (index === 0) {
+        // 下限スライダー
+        newRange[0] = Math.max(min, Math.min(newValue, newRange[1] - step));
+      } else {
+        // 上限スライダー
+        newRange[1] = Math.max(newRange[0] + step, Math.min(max, newValue));
+      }
+      
+      onChange(newRange);
+    };
+
+    const leftPercent = ((value[0] - min) / (max - min)) * 100;
+    const rightPercent = ((value[1] - min) / (max - min)) * 100;
+
+    return (
+      <div style={{ position: 'relative', margin: '20px 0' }}>
+        {/* トラック背景 */}
+        <div style={{
+          height: '8px',
+          backgroundColor: '#e5e7eb',
+          borderRadius: '4px',
+          position: 'relative',
+          marginBottom: '24px'
+        }}>
+          {/* アクティブ範囲 */}
+          <div style={{
+            position: 'absolute',
+            height: '8px',
+            backgroundColor: '#3b82f6',
+            borderRadius: '4px',
+            left: `${leftPercent}%`,
+            width: `${rightPercent - leftPercent}%`,
+            zIndex: 1
+          }}></div>
+        </div>
+        
+        {/* 下限スライダー */}
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value[0]}
+          step={step}
+          onChange={(e) => handleRangeChange(0, parseInt(e.target.value))}
+          onMouseDown={() => {
+            setIsDragging(true);
+            setDragIndex(0);
+          }}
+          onMouseUp={() => {
+            setIsDragging(false);
+            setDragIndex(null);
+          }}
+          style={{
+            position: 'absolute',
+            top: '-16px',
+            left: '0',
+            width: '100%',
+            height: '32px',
+            background: 'transparent',
+            outline: 'none',
+            appearance: 'none',
+            cursor: 'pointer',
+            zIndex: dragIndex === 0 ? 5 : 3,
+            pointerEvents: 'auto'
+          }}
+        />
+        
+        {/* 上限スライダー */}
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value[1]}
+          step={step}
+          onChange={(e) => handleRangeChange(1, parseInt(e.target.value))}
+          onMouseDown={() => {
+            setIsDragging(true);
+            setDragIndex(1);
+          }}
+          onMouseUp={() => {
+            setIsDragging(false);
+            setDragIndex(null);
+          }}
+          style={{
+            position: 'absolute',
+            top: '-16px',
+            left: '0',
+            width: '100%',
+            height: '32px',
+            background: 'transparent',
+            outline: 'none',
+            appearance: 'none',
+            cursor: 'pointer',
+            zIndex: dragIndex === 1 ? 5 : 2,
+            pointerEvents: 'auto'
+          }}
+        />
+        
+        {/* 値表示 */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginTop: '8px',
+          fontSize: '14px',
+          color: '#6b7280'
+        }}>
+          <span style={{ 
+            fontWeight: '500',
+            color: dragIndex === 0 ? '#3b82f6' : '#6b7280'
+          }}>
+            {value[0]}{unit}
+          </span>
+          <span style={{ 
+            fontWeight: '500',
+            color: dragIndex === 1 ? '#3b82f6' : '#6b7280'
+          }}>
+            {value[1]}{unit}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  if (loading || carTypeLoading) {
     return (
       <div style={{ 
         display: 'flex', 
@@ -370,7 +581,186 @@ export default function CarAnalysisDashboard() {
             animation: 'spin 1s linear infinite',
             margin: '0 auto 16px'
           }}></div>
-          <p style={{ color: '#6b7280' }}>データを読み込み中...</p>
+          <p style={{ color: '#6b7280' }}>
+            {carTypeLoading ? '車種を検索中...' : 'データを読み込み中...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // データが選択されていない場合の表示
+  if (!selectedCarType || !selectedFile) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb' }}>
+        {/* ヘッダー */}
+        <div style={{ 
+          backgroundColor: 'white', 
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', 
+          borderBottom: '1px solid #e5e7eb' 
+        }}>
+          <div style={{ 
+            maxWidth: '1280px', 
+            margin: '0 auto', 
+            padding: '0 16px' 
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              padding: '16px 0' 
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Car size={32} color="#2563eb" />
+                <div>
+                  <h1 style={{ 
+                    fontSize: '24px', 
+                    fontWeight: 'bold', 
+                    color: '#111827', 
+                    margin: '0' 
+                  }}>
+                    中古車分析ダッシュボード
+                  </h1>
+                  <p style={{ 
+                    fontSize: '14px', 
+                    color: '#6b7280', 
+                    margin: '4px 0 0 0' 
+                  }}>
+                    車種とデータファイルを選択してください
+                  </p>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                {/* 車種選択 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
+                    車種:
+                  </label>
+                  <select
+                    value={selectedCarType}
+                    onChange={(e) => setSelectedCarType(e.target.value)}
+                    style={{
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      fontSize: '14px',
+                      backgroundColor: 'white',
+                      minWidth: '120px'
+                    }}
+                  >
+                    <option value="">車種を選択</option>
+                    {availableCarTypes.map(carType => (
+                      <option key={carType} value={carType}>
+                        {carType === 'F' ? 'RC F' : carType}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* ファイル選択 */}
+                {selectedCarType && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
+                      データ:
+                    </label>
+                    <select
+                      value={selectedFile}
+                      onChange={(e) => setSelectedFile(e.target.value)}
+                      style={{
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        backgroundColor: 'white',
+                        minWidth: '200px'
+                      }}
+                    >
+                      <option value="">ファイルを選択</option>
+                      {availableFiles.map(file => (
+                        <option key={file.path} value={file.path}>
+                          {file.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 選択促進メッセージ */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          height: 'calc(100vh - 120px)' 
+        }}>
+          <div style={{ 
+            textAlign: 'center', 
+            backgroundColor: 'white', 
+            padding: '48px', 
+            borderRadius: '12px', 
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' 
+          }}>
+            <Car size={64} color="#6b7280" style={{ margin: '0 auto 24px' }} />
+            <h2 style={{ 
+              fontSize: '24px', 
+              fontWeight: '600', 
+              color: '#111827', 
+              marginBottom: '16px' 
+            }}>
+              車種とデータを選択
+            </h2>
+            <p style={{ 
+              fontSize: '16px', 
+              color: '#6b7280', 
+              marginBottom: '24px',
+              maxWidth: '400px'
+            }}>
+              {!selectedCarType 
+                ? '上部のドロップダウンから分析したい車種を選択してください。' 
+                : 'データファイルを選択して分析を開始してください。'
+              }
+            </p>
+            
+            {availableCarTypes.length > 0 && (
+              <div style={{ 
+                padding: '16px', 
+                backgroundColor: '#f9fafb', 
+                borderRadius: '8px',
+                marginTop: '16px'
+              }}>
+                <p style={{ 
+                  fontSize: '14px', 
+                  color: '#374751', 
+                  marginBottom: '8px',
+                  fontWeight: '500'
+                }}>
+                  利用可能な車種:
+                </p>
+                <div style={{ 
+                  display: 'flex', 
+                  flexWrap: 'wrap', 
+                  gap: '8px',
+                  justifyContent: 'center'
+                }}>
+                  {availableCarTypes.map(carType => (
+                    <span key={carType} style={{
+                      padding: '4px 12px',
+                      backgroundColor: '#e5e7eb',
+                      borderRadius: '16px',
+                      fontSize: '14px',
+                      color: '#374751'
+                    }}>
+                      {carType === 'F' ? 'RC F' : carType}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -404,21 +794,76 @@ export default function CarAnalysisDashboard() {
                   color: '#111827', 
                   margin: '0' 
                 }}>
-                  RC F 中古車分析ダッシュボード
+                  中古車分析ダッシュボード
                 </h1>
-                {lastUpdate && (
-                  <p style={{ 
-                    fontSize: '14px', 
-                    color: '#6b7280', 
-                    margin: '4px 0 0 0' 
-                  }}>
-                    最終更新: {lastUpdate}
-                  </p>
-                )}
+                <p style={{ 
+                  fontSize: '14px', 
+                  color: '#6b7280', 
+                  margin: '4px 0 0 0' 
+                }}>
+                  {selectedCarType && `車種: ${selectedCarType}`}
+                  {lastUpdate && ` | 最終更新: ${lastUpdate}`}
+                </p>
               </div>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              {/* 車種選択ドロップダウン */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
+                  車種:
+                </label>
+                <select
+                  value={selectedCarType}
+                  onChange={(e) => setSelectedCarType(e.target.value)}
+                  disabled={carTypeLoading}
+                  style={{
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: '14px',
+                    backgroundColor: 'white',
+                    minWidth: '120px'
+                  }}
+                >
+                  <option value="">車種を選択</option>
+                  {availableCarTypes.map(carType => (
+                    <option key={carType} value={carType}>
+                      {carType === 'F' ? 'RC F' : carType}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* ファイル選択ドロップダウン */}
+              {selectedCarType && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
+                    データ:
+                  </label>
+                  <select
+                    value={selectedFile}
+                    onChange={(e) => setSelectedFile(e.target.value)}
+                    disabled={loading}
+                    style={{
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      fontSize: '14px',
+                      backgroundColor: 'white',
+                      minWidth: '200px'
+                    }}
+                  >
+                    <option value="">ファイルを選択</option>
+                    {availableFiles.map(file => (
+                      <option key={file.path} value={file.path}>
+                        {file.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* データ品質インジケーター */}
               {dataQuality && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -485,12 +930,18 @@ export default function CarAnalysisDashboard() {
               </div>
               
               <span style={{ fontSize: '14px', color: '#6b7280' }}>
-                表示中: <span style={{ fontWeight: '600', color: '#3b82f6' }}>{filteredData.length}</span>件 / 
-                全<span style={{ fontWeight: '600' }}>{rawData.length}</span>件
-                {filteredData.length !== rawData.length && (
-                  <span style={{ color: '#ef4444', marginLeft: '8px' }}>
-                    ({rawData.length - filteredData.length}件フィルター中)
-                  </span>
+                {selectedCarType ? (
+                  <>
+                    表示中: <span style={{ fontWeight: '600', color: '#3b82f6' }}>{filteredData.length}</span>件 / 
+                    全<span style={{ fontWeight: '600' }}>{rawData.length}</span>件
+                    {filteredData.length !== rawData.length && (
+                      <span style={{ color: '#ef4444', marginLeft: '8px' }}>
+                        ({rawData.length - filteredData.length}件フィルター中)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  '車種を選択してください'
                 )}
               </span>
             </div>
@@ -677,7 +1128,7 @@ export default function CarAnalysisDashboard() {
                 </div>
               </div>
 
-              {/* 価格範囲 */}
+              {/* 価格範囲（統合レンジスライダー） */}
               <div style={{ marginBottom: '24px' }}>
                 <label style={{ 
                   display: 'block', 
@@ -686,15 +1137,15 @@ export default function CarAnalysisDashboard() {
                   color: '#374751', 
                   marginBottom: '8px' 
                 }}>
-                  価格範囲 (万円)
+                  価格範囲
                 </label>
                 
                 {/* 価格入力フィールド */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                   <input
                     type="number"
-                    value={priceRange.min}
-                    onChange={(e) => setPriceRange(prev => ({ ...prev, min: parseInt(e.target.value) || 0 }))}
+                    value={priceRange[0]}
+                    onChange={(e) => setPriceRange(prev => [parseInt(e.target.value) || 0, prev[1]])}
                     min="0"
                     max="2000"
                     placeholder="下限"
@@ -709,8 +1160,8 @@ export default function CarAnalysisDashboard() {
                   <span style={{ color: '#6b7280' }}>〜</span>
                   <input
                     type="number"
-                    value={priceRange.max}
-                    onChange={(e) => setPriceRange(prev => ({ ...prev, max: parseInt(e.target.value) || 2000 }))}
+                    value={priceRange[1]}
+                    onChange={(e) => setPriceRange(prev => [prev[0], parseInt(e.target.value) || 2000])}
                     min="0"
                     max="2000"
                     placeholder="上限"
@@ -724,47 +1175,15 @@ export default function CarAnalysisDashboard() {
                   />
                 </div>
 
-                {/* 価格スライダー - 下限 */}
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', display: 'block' }}>
-                    下限: {priceRange.min}万円
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2000"
-                    step="50"
-                    value={priceRange.min}
-                    onChange={(e) => setPriceRange(prev => ({ 
-                      ...prev, 
-                      min: Math.min(parseInt(e.target.value), prev.max - 50)
-                    }))}
-                    style={{ width: '100%', accentColor: '#3b82f6' }}
-                  />
-                </div>
-
-                {/* 価格スライダー - 上限 */}
-                <div style={{ marginBottom: '8px' }}>
-                  <label style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', display: 'block' }}>
-                    上限: {priceRange.max}万円
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2000"
-                    step="50"
-                    value={priceRange.max}
-                    onChange={(e) => setPriceRange(prev => ({ 
-                      ...prev, 
-                      max: Math.max(parseInt(e.target.value), prev.min + 50)
-                    }))}
-                    style={{ width: '100%', accentColor: '#3b82f6' }}
-                  />
-                </div>
-
-                <div style={{ fontSize: '12px', color: '#6b7280', textAlign: 'center' }}>
-                  {priceRange.min}万円 〜 {priceRange.max}万円
-                </div>
+                {/* 統合レンジスライダー */}
+                <RangeSlider
+                  min={0}
+                  max={2000}
+                  value={priceRange}
+                  onChange={setPriceRange}
+                  step={50}
+                  unit="万円"
+                />
               </div>
 
               {/* 走行距離 */}
@@ -778,18 +1197,67 @@ export default function CarAnalysisDashboard() {
                 }}>
                   走行距離上限: {Math.round(mileageMax / 10000 * 10) / 10}万km
                 </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="200000"
-                  step="10000"
-                  value={mileageMax}
-                  onChange={(e) => setMileageMax(parseInt(e.target.value))}
-                  style={{ width: '100%', accentColor: '#3b82f6' }}
-                />
+                
+                {/* 走行距離スライダー（可視化改善） */}
+                <div style={{ position: 'relative', margin: '12px 0' }}>
+                  {/* トラック背景 */}
+                  <div style={{
+                    height: '8px',
+                    backgroundColor: '#e5e7eb',
+                    borderRadius: '4px',
+                    position: 'relative',
+                    marginBottom: '16px'
+                  }}>
+                    {/* アクティブ部分 */}
+                    <div style={{
+                      position: 'absolute',
+                      height: '8px',
+                      backgroundColor: '#10b981',
+                      borderRadius: '4px',
+                      left: '0%',
+                      width: `${(mileageMax / 200000) * 100}%`,
+                      zIndex: 1
+                    }}></div>
+                  </div>
+                  
+                  {/* スライダー */}
+                  <input
+                    type="range"
+                    min="0"
+                    max="200000"
+                    step="10000"
+                    value={mileageMax}
+                    onChange={(e) => setMileageMax(parseInt(e.target.value))}
+                    style={{
+                      position: 'absolute',
+                      top: '-12px',
+                      left: '0',
+                      width: '100%',
+                      height: '32px',
+                      background: 'transparent',
+                      outline: 'none',
+                      appearance: 'none',
+                      cursor: 'pointer',
+                      zIndex: 2
+                    }}
+                  />
+                  
+                  {/* 目盛り表示 */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginTop: '8px',
+                    fontSize: '12px',
+                    color: '#9ca3af'
+                  }}>
+                    <span>0万km</span>
+                    <span>10万km</span>
+                    <span>20万km</span>
+                  </div>
+                </div>
               </div>
 
-              {/* ミッション */}
+              {/* ミッション（チェックボックス形式） */}
               <div style={{ marginBottom: '24px' }}>
                 <label style={{ 
                   display: 'block', 
@@ -800,23 +1268,24 @@ export default function CarAnalysisDashboard() {
                 }}>
                   ミッション
                 </label>
-                <select
-                  value={transmissionFilter}
-                  onChange={(e) => setTransmissionFilter(e.target.value)}
-                  style={{
-                    width: '100%',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    padding: '8px 12px',
-                    fontSize: '14px',
-                    backgroundColor: 'white'
-                  }}
-                >
-                  <option value="all">すべて</option>
-                  <option value="mt">MT（マニュアル）</option>
-                  <option value="at">AT（オートマ）</option>
-                  <option value="cvt">CVT</option>
-                </select>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {Object.entries({
+                    AT: 'AT（オートマ）',
+                    CVT: 'CVT',
+                    MT: 'MT（マニュアル）',
+                    other: 'その他'
+                  }).map(([key, label]) => (
+                    <label key={key} style={{ display: 'flex', alignItems: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={transmissionFilters[key]}
+                        onChange={() => handleTransmissionToggle(key)}
+                        style={{ marginRight: '8px', accentColor: '#3b82f6' }}
+                      />
+                      <span style={{ fontSize: '14px' }}>{label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               {/* 修復歴 */}
@@ -866,9 +1335,9 @@ export default function CarAnalysisDashboard() {
                 <button
                   onClick={() => {
                     setYearRange({ min: 2014, max: 2025 });
-                    setPriceRange({ min: 0, max: 2000 });
+                    setPriceRange([0, 2000]);
                     setMileageMax(200000);
-                    setTransmissionFilter('all');
+                    setTransmissionFilters({ AT: true, CVT: true, MT: true, other: true });
                     setRepairHistoryFilter('all');
                     setSelectedGrades(availableGrades);
                   }}
@@ -1106,25 +1575,76 @@ export default function CarAnalysisDashboard() {
                   }}>
                     修復歴統計
                   </h3>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={280}>
                     <PieChart>
                       <Pie
                         data={repairHistoryData}
                         cx="50%"
                         cy="50%"
-                        outerRadius={100}
+                        outerRadius={70}
+                        innerRadius={35}
                         dataKey="value"
-                        label={({ name, value, percent }) => 
-                          `${name}: ${value}台 (${(percent * 100).toFixed(1)}%)`
-                        }
+                        label={false} // ラベル非表示
+                        labelLine={false}
                       >
                         {repairHistoryData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.fill} />
                         ))}
                       </Pie>
-                      <Tooltip />
+                      <Tooltip 
+                        formatter={(value, name) => [`${value}台`, name]}
+                        contentStyle={{
+                          backgroundColor: 'white',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '6px',
+                          fontSize: '14px'
+                        }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
+                  
+                  {/* 統計情報を表で表示（レイアウト改善） */}
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {repairHistoryData.map((item, index) => (
+                        <div key={index} style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 16px',
+                          backgroundColor: '#f9fafb',
+                          borderRadius: '6px',
+                          border: `2px solid ${item.fill}`,
+                          minHeight: '50px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={{
+                              width: '16px',
+                              height: '16px',
+                              backgroundColor: item.fill,
+                              borderRadius: '50%',
+                              marginRight: '12px',
+                              flexShrink: 0
+                            }}></div>
+                            <div style={{ fontSize: '14px', fontWeight: '600', color: '#111827' }}>
+                              {item.name}
+                            </div>
+                          </div>
+                          <div style={{ 
+                            fontSize: '16px', 
+                            fontWeight: 'bold', 
+                            color: '#111827',
+                            textAlign: 'right'
+                          }}>
+                            <div>{item.value}台</div>
+                            <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: 'normal' }}>
+                              ({Math.round((item.value / filteredData.length) * 100)}%)
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1151,24 +1671,61 @@ export default function CarAnalysisDashboard() {
                   }}>
                     価格推移
                   </h3>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {['monthly', 'yearly'].map(scale => (
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {/* 日付基準切り替え */}
+                    <div style={{ display: 'flex', gap: '4px' }}>
                       <button
-                        key={scale}
-                        onClick={() => setTimeScale(scale)}
+                        onClick={() => setTrendDateMode('scraping')}
                         style={{
-                          padding: '4px 12px',
-                          borderRadius: '6px',
-                          fontSize: '14px',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
                           border: 'none',
                           cursor: 'pointer',
-                          backgroundColor: timeScale === scale ? '#3b82f6' : '#f3f4f6',
-                          color: timeScale === scale ? 'white' : '#374751'
+                          backgroundColor: trendDateMode === 'scraping' ? '#10b981' : '#f3f4f6',
+                          color: trendDateMode === 'scraping' ? 'white' : '#374751'
                         }}
                       >
-                        {scale === 'monthly' ? '月次' : '年次'}
+                        取得日基準
                       </button>
-                    ))}
+                      <button
+                        onClick={() => setTrendDateMode('year')}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          backgroundColor: trendDateMode === 'year' ? '#10b981' : '#f3f4f6',
+                          color: trendDateMode === 'year' ? 'white' : '#374751'
+                        }}
+                      >
+                        年式基準
+                      </button>
+                    </div>
+                    
+                    {/* 時間軸切り替え（スクレイピング日基準の場合のみ） */}
+                    {trendDateMode === 'scraping' && (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {['monthly', 'yearly'].map(scale => (
+                          <button
+                            key={scale}
+                            onClick={() => setTimeScale(scale)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              backgroundColor: timeScale === scale ? '#3b82f6' : '#f3f4f6',
+                              color: timeScale === scale ? 'white' : '#374751'
+                            }}
+                          >
+                            {scale === 'monthly' ? '月次' : '年次'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <ResponsiveContainer width="100%" height={400}>
@@ -1219,7 +1776,8 @@ export default function CarAnalysisDashboard() {
                   </LineChart>
                 </ResponsiveContainer>
                 <div style={{ marginTop: '16px', fontSize: '14px', color: '#6b7280' }}>
-                  <p>💡 データが蓄積されると価格の推移がグラフで表示されます</p>
+                  <p>💡 {trendDateMode === 'scraping' ? 'スクレイピング取得日' : '年式'}を基準とした価格推移です</p>
+                  <p>📈 青線：平均価格、緑破線：中央値、赤破線：最高価格、橙破線：最低価格</p>
                 </div>
               </div>
             )}
@@ -1436,8 +1994,23 @@ export default function CarAnalysisDashboard() {
                               <p style={{ fontSize: '14px', margin: '0 0 4px 0' }}>
                                 <strong>グレード:</strong> {data.正規グレード}
                               </p>
-                              <p style={{ fontSize: '14px', margin: '0' }}>
+                              <p style={{ fontSize: '14px', margin: '0 0 4px 0' }}>
                                 <strong>修復歴:</strong> {data.修復歴}
+                              </p>
+                              <p style={{ fontSize: '14px', margin: '0' }}>
+                                <strong>ソースURL:</strong> 
+                                <a 
+                                  href={data.車両URL || data.ソースURL} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ 
+                                    color: '#3b82f6', 
+                                    textDecoration: 'none',
+                                    marginLeft: '8px'
+                                  }}
+                                >
+                                  詳細を見る
+                                </a>
                               </p>
                             </div>
                           );
@@ -1642,14 +2215,116 @@ export default function CarAnalysisDashboard() {
                   <div>車両年数: {new Date().getFullYear() - selectedCarDetail.year}年</div>
                 </div>
               </div>
+
+              {/* カーセンサー詳細リンク */}
+              {selectedCarDetail.車両URL && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '16px',
+                  backgroundColor: '#f0f9ff',
+                  borderRadius: '6px',
+                  border: '1px solid #0ea5e9'
+                }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px', color: '#0c4a6e' }}>
+                    詳細情報
+                  </h4>
+                  <div style={{ fontSize: '14px' }}>
+                    <a 
+                      href={selectedCarDetail.車両URL} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: '#0ea5e9',
+                        textDecoration: 'none',
+                        fontWeight: '500',
+                        padding: '8px 16px',
+                        backgroundColor: 'white',
+                        borderRadius: '6px',
+                        border: '1px solid #0ea5e9'
+                      }}
+                    >
+                      🔗 カーセンサーで詳細を見る
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
-          </div>
-        </div>
-      </div>
+      <style jsx>{`
+        input[type="range"] {
+          -webkit-appearance: none;
+          appearance: none;
+          background: transparent;
+          cursor: pointer;
+          pointer-events: auto;
+        }
+
+        input[type="range"]:focus {
+          outline: 2px solid #3b82f6;
+          outline-offset: 2px;
+        }
+
+        input[type="range"]::-webkit-slider-track {
+          background: transparent;
+          height: 8px;
+          border-radius: 4px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          background: #3b82f6;
+          height: 24px;
+          width: 24px;
+          border-radius: 50%;
+          border: 3px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          cursor: pointer;
+          pointer-events: auto;
+          transition: all 0.2s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+          background: #2563eb;
+          transform: scale(1.1);
+        }
+
+        input[type="range"]::-moz-range-track {
+          background: transparent;
+          height: 8px;
+          border-radius: 4px;
+          border: none;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+          background: #3b82f6;
+          height: 24px;
+          width: 24px;
+          border-radius: 50%;
+          border: 3px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          cursor: pointer;
+          pointer-events: auto;
+          transition: all 0.2s ease;
+        }
+
+        input[type="range"]::-moz-range-thumb:hover {
+          background: #2563eb;
+          transform: scale(1.1);
+        }
+
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
     </div>
   );
 }
