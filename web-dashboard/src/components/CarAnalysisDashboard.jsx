@@ -46,6 +46,10 @@ export default function CarAnalysisDashboard() {
   const [availableFiles, setAvailableFiles] = useState([]);
   const [carTypeLoading, setCarTypeLoading] = useState(false);
 
+  // ソート設定
+  const [sortField, setSortField] = useState('price');
+  const [sortOrder, setSortOrder] = useState('asc');
+
   // 利用可能な車種を読み込む関数
   const loadAvailableCarTypes = async () => {
     try {
@@ -327,6 +331,18 @@ export default function CarAnalysisDashboard() {
       return true;
     });
   }, [processedData, selectedGrades, yearRange, mileageMax, priceRange, transmissionFilters, repairHistoryFilter, showNormalizedGrades]);
+
+  // 並び替え後のデータ
+  const sortedData = useMemo(() => {
+    const data = [...filteredData];
+    data.sort((a, b) => {
+      const valA = a[sortField] ?? 0;
+      const valB = b[sortField] ?? 0;
+      if (valA === valB) return 0;
+      return sortOrder === 'asc' ? valA - valB : valB - valA;
+    });
+    return data;
+  }, [filteredData, sortField, sortOrder]);
 
   // 価格推移データの生成（日付モード対応）
   const trendData = useMemo(() => {
@@ -1510,7 +1526,8 @@ export default function CarAnalysisDashboard() {
                     { key: 'overview', label: '概要', icon: BarChart3 },
                     { key: 'trend', label: '価格推移', icon: TrendingUp },
                     { key: 'grades', label: 'グレード分析', icon: BarChart3 },
-                    { key: 'scatter', label: '走行距離vs価格', icon: MapPin }
+                    { key: 'scatter', label: '走行距離vs価格', icon: MapPin },
+                    { key: 'list', label: '車両一覧', icon: Car }
                   ].map(({ key, label, icon: Icon }) => (
                     <button
                       key={key}
@@ -2085,12 +2102,12 @@ export default function CarAnalysisDashboard() {
 
             {/* 走行距離vs価格 */}
             {viewMode === 'scatter' && (
-              <div style={{ 
-                backgroundColor: 'white', 
-                borderRadius: '8px', 
-                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', 
-                border: '1px solid #e5e7eb', 
-                padding: '24px' 
+              <div style={{
+                backgroundColor: 'white',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+                border: '1px solid #e5e7eb',
+                padding: '24px'
               }}>
                 <h3 style={{ 
                   fontSize: '18px', 
@@ -2181,6 +2198,95 @@ export default function CarAnalysisDashboard() {
                 <div style={{ marginTop: '16px', fontSize: '14px', color: '#6b7280' }}>
                   <p>💡 <strong>ヒント:</strong> 各点は1台の車両を表しています。左下ほど高コスパ、右上ほど価格が高い傾向があります。</p>
                   <p>🖱️ <strong>操作:</strong> 点をクリックすると車両の詳細情報が表示されます。</p>
+                </div>
+              </div>
+            )}
+
+            {/* ソート済み一覧 */}
+            {viewMode === 'list' && (
+              <div style={{
+                backgroundColor: 'white',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+                border: '1px solid #e5e7eb',
+                padding: '24px'
+              }}>
+                <h3 style={{
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  color: '#111827',
+                  marginBottom: '16px'
+                }}>
+                  車両一覧
+                </h3>
+                <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <label style={{ fontSize: '14px' }}>並び替え:</label>
+                  <select
+                    value={sortField}
+                    onChange={(e) => setSortField(e.target.value)}
+                    style={{
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="price">価格</option>
+                    <option value="year">年式</option>
+                    <option value="mileage">走行距離</option>
+                  </select>
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value)}
+                    style={{
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="asc">昇順</option>
+                    <option value="desc">降順</option>
+                  </select>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    border: '1px solid #d1d5db'
+                  }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f9fafb' }}>
+                        <th style={{ border: '1px solid #d1d5db', padding: '8px 16px', textAlign: 'left', fontSize: '14px', fontWeight: '600' }}>車種名</th>
+                        <th style={{ border: '1px solid #d1d5db', padding: '8px 16px', textAlign: 'left', fontSize: '14px', fontWeight: '600' }}>グレード</th>
+                        <th style={{ border: '1px solid #d1d5db', padding: '8px 16px', textAlign: 'left', fontSize: '14px', fontWeight: '600' }}>金額</th>
+                        <th style={{ border: '1px solid #d1d5db', padding: '8px 16px', textAlign: 'left', fontSize: '14px', fontWeight: '600' }}>年式</th>
+                        <th style={{ border: '1px solid #d1d5db', padding: '8px 16px', textAlign: 'left', fontSize: '14px', fontWeight: '600' }}>走行距離</th>
+                        <th style={{ border: '1px solid #d1d5db', padding: '8px 16px', textAlign: 'left', fontSize: '14px', fontWeight: '600' }}>車両URL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedData.map((item, index) => (
+                        <tr key={index} style={{ backgroundColor: index % 2 === 0 ? 'white' : '#f9fafb' }}>
+                          <td style={{ border: '1px solid #d1d5db', padding: '8px 16px', fontSize: '14px' }}>{item.車種名}</td>
+                          <td style={{ border: '1px solid #d1d5db', padding: '8px 16px', fontSize: '14px' }}>{item.正規グレード}</td>
+                          <td style={{ border: '1px solid #d1d5db', padding: '8px 16px', fontSize: '14px' }}>{item.price}万円</td>
+                          <td style={{ border: '1px solid #d1d5db', padding: '8px 16px', fontSize: '14px' }}>{item.year}年</td>
+                          <td style={{ border: '1px solid #d1d5db', padding: '8px 16px', fontSize: '14px' }}>{Math.round(item.mileage / 10000 * 10) / 10}万km</td>
+                          <td style={{ border: '1px solid #d1d5db', padding: '8px 16px', fontSize: '14px' }}>
+                            <a
+                              href={item.車両URL || item.ソースURL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#3b82f6', textDecoration: 'none' }}
+                            >
+                              詳細
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
