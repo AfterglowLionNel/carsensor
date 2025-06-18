@@ -15,8 +15,13 @@ from difflib import SequenceMatcher
 import logging
 
 class GradeNormalizer:
-    def __init__(self, grades_json_path="config\\car_grades.json"):
-        self.grades_json_path = Path(grades_json_path)
+    def __init__(self, grades_json_path=None):
+        if grades_json_path is None:
+            grades_json_path = Path("config") / "car_grades.json"
+        else:
+            grades_json_path = Path(grades_json_path)
+
+        self.grades_json_path = grades_json_path
         self.car_grades_db = {}
         self.exclude_keywords = []
         
@@ -54,7 +59,7 @@ class GradeNormalizer:
     
     def load_exclude_keywords(self):
         """除外キーワード読み込み"""
-        keywords_file = Path("config\\exclude_keywords.txt")
+        keywords_file = Path("config") / "exclude_keywords.txt"
         
         try:
             if keywords_file.exists():
