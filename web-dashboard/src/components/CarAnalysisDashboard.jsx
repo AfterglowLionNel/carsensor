@@ -1005,7 +1005,7 @@ export default function CarAnalysisDashboard() {
 
       {/* メインコンテンツ */}
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '24px' }}>
           
           {/* サイドバー - フィルター */}
           <div>
@@ -1014,7 +1014,7 @@ export default function CarAnalysisDashboard() {
               borderRadius: '8px', 
               boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', 
               border: '1px solid #e5e7eb', 
-              padding: '24px',
+              padding: '16px',
               position: 'sticky',
               top: '24px'
             }}>
