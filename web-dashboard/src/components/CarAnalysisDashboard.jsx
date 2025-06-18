@@ -559,7 +559,6 @@ export default function CarAnalysisDashboard() {
       const distToMin = Math.abs(newValue - value[0]);
       const distToMax = Math.abs(newValue - value[1]);
       const index = distToMin <= distToMax ? 0 : 1;
-      ilzru0-codex/スライダーのポチ挙動修正
       handleRangeChange(index, newValue);
       setDragIndex(index);
       setDragIndex(index);
