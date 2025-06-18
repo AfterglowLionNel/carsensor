@@ -373,7 +373,7 @@ export default function CarAnalysisDashboard() {
 
   // 価格推移から単純回帰で予測値を生成
   const forecastData = useMemo(() => {
-    if (trendData.length < 2) return [];
+    if (trendDateMode !== 'scraping' || trendData.length < 2) return [];
 
     const n = trendData.length;
     const sumX = trendData.reduce((acc, _, i) => acc + i, 0);
@@ -424,8 +424,11 @@ export default function CarAnalysisDashboard() {
   }, [trendData, timeScale]);
 
   const trendDataWithForecast = useMemo(
-    () => [...trendData, ...forecastData],
-    [trendData, forecastData]
+    () =>
+      trendDateMode === 'scraping'
+        ? [...trendData, ...forecastData]
+        : trendData,
+    [trendData, forecastData, trendDateMode]
   );
 
   // グレード別分析データ
@@ -1846,7 +1849,7 @@ export default function CarAnalysisDashboard() {
                   </div>
                 </div>
                 <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={trendDataWithForecast}>
+                  <LineChart data={trendDateMode === 'scraping' ? trendDataWithForecast : trendData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="date" stroke="#666" />
                     <YAxis label={{ value: '価格 (万円)', angle: -90, position: 'insideLeft' }} stroke="#666" />
@@ -1890,20 +1893,25 @@ export default function CarAnalysisDashboard() {
                       strokeDasharray="2 2"
                       dot={false}
                     />
-                    <Line
-                      type="monotone"
-                      dataKey="forecastPrice"
-                      stroke="#6366f1"
-                      strokeWidth={2}
-                      name="予想平均価格"
-                      strokeDasharray="3 3"
-                      dot={{ stroke: '#6366f1', fill: '#fff', r: 3 }}
-                    />
+                    {trendDateMode === 'scraping' && (
+                      <Line
+                        type="monotone"
+                        dataKey="forecastPrice"
+                        stroke="#6366f1"
+                        strokeWidth={2}
+                        name="予想平均価格"
+                        strokeDasharray="3 3"
+                        dot={{ stroke: '#6366f1', fill: '#fff', r: 3 }}
+                      />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
                 <div style={{ marginTop: '16px', fontSize: '14px', color: '#6b7280' }}>
                   <p>💡 {trendDateMode === 'scraping' ? 'スクレイピング取得日' : '年式'}を基準とした価格推移です</p>
-                  <p>📈 青線：平均価格、緑破線：中央値、赤破線：最高価格、橙破線：最低価格、紫破線：予想平均価格</p>
+                  <p>
+                    📈 青線：平均価格、緑破線：中央値、赤破線：最高価格、橙破線：最低価格
+                    {trendDateMode === 'scraping' && '、紫破線：予想平均価格'}
+                  </p>
                 </div>
               </div>
             )}
