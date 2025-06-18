@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ScatterChart, Scatter, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { Car, TrendingUp, BarChart3, MapPin, Filter, Upload, Download, RefreshCw, AlertCircle, CheckCircle, Calendar } from 'lucide-react';
 import Papa from 'papaparse';
@@ -547,6 +547,22 @@ export default function CarAnalysisDashboard() {
   const RangeSlider = ({ min, max, value, onChange, step = 1, unit = '' }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [dragIndex, setDragIndex] = useState(null);
+    const sliderRef = useRef(null);
+
+    const handleTrackClick = (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      const rect = sliderRef.current.getBoundingClientRect();
+      const clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
+      let percent = (clientX - rect.left) / rect.width;
+      percent = Math.min(1, Math.max(0, percent));
+      const rawValue = min + percent * (max - min);
+      const newValue = Math.round(rawValue / step) * step;
+      const distToMin = Math.abs(newValue - value[0]);
+      const distToMax = Math.abs(newValue - value[1]);
+      const index = distToMin <= distToMax ? 0 : 1;
+      setDragIndex(index);
+      handleRangeChange(index, newValue);
+    };
     
     const handleRangeChange = (index, newValue) => {
       const numValue = parseInt(newValue);
@@ -567,7 +583,12 @@ export default function CarAnalysisDashboard() {
     const rightPercent = ((value[1] - min) / (max - min)) * 100;
 
     return (
-      <div style={{ position: 'relative', margin: '20px 0' }}>
+      <div
+        ref={sliderRef}
+        onMouseDown={handleTrackClick}
+        onTouchStart={handleTrackClick}
+        style={{ position: 'relative', margin: '20px 0' }}
+      >
         {/* トラック背景 */}
         <div style={{
           height: '8px',
