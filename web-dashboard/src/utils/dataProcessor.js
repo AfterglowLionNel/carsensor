@@ -153,6 +153,12 @@ export const parseDisplacement = (displacementStr) => {
 };
 
 /**
+ * グレード名の正規化（簡易版）
+ * @param {string} gradeName - 元のグレード名
+ * @returns {string} 正規化されたグレード名
+ */
+
+/**
  * CSVデータを分析用に変換（修正版）
  * @param {Array} rawData - CSVから読み込んだ生データ
  * @returns {Array} 変換済みデータ
@@ -171,7 +177,10 @@ export const processCarData = (rawData) => {
       const displacement = parseDisplacement(row.排気量);
       
       // 正規グレードが存在しない場合は元グレードを使用
-      const normalizedGrade = row.正規グレード || row.グレード || '';
+      // JSONファイルから読み込んだグレードをクレンジング
+      const normalizedGrade = normalizeGradeName(
+        row.正規グレード || row.グレード || ''
+      );
       
       // 日付の処理（修正版）
       const date = parseDate(row.取得日時);

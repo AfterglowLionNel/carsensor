@@ -17,8 +17,13 @@ from urllib.parse import urljoin, urlparse, parse_qs
 from pathlib import Path
 
 class CarScraper:
-    def __init__(self, output_dir="data\\scraped"):
-        self.output_dir = Path(output_dir)
+    def __init__(self, output_dir=None):
+        if output_dir is None:
+            output_dir = Path("data") / "scraped"
+        else:
+            output_dir = Path(output_dir)
+
+        self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.setup_logging()
         

@@ -142,6 +142,10 @@ def enhance_data_for_web(df):
     # ソースURLの処理
     if 'ソースURL' not in enhanced_df.columns:
         enhanced_df['ソースURL'] = ''
+
+    # 車両URLの処理
+    if '車両URL' not in enhanced_df.columns:
+        enhanced_df['車両URL'] = enhanced_df.get('ソースURL', '')
     
     # 追加の分析用カラム
     enhanced_df['年齢'] = datetime.now().year - enhanced_df['年式数値']
@@ -203,6 +207,7 @@ def export_to_json(df, output_path):
                 'マッチング精度': float(row.get('マッチング精度', 0.8)),
                 '取得日時': row.get('取得日時', ''),
                 'ソースURL': row.get('ソースURL', ''),
+                '車両URL': row.get('車両URL', row.get('ソースURL', '')),
                 # 分析用の数値データ
                 'price': float(row.get('価格数値', 0)),
                 'year': int(row.get('年式数値', 2020)),
