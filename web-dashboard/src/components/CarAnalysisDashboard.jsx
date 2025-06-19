@@ -54,12 +54,15 @@ export default function CarAnalysisDashboard() {
   const loadAvailableCarTypes = async () => {
     try {
       setCarTypeLoading(true);
-      // デモ用のデータセット
-      const carTypes = ['F']; // RC F
-      setAvailableCarTypes(carTypes);
-      // デフォルトで RC F を選択
-      if (carTypes.length > 0) {
-        setSelectedCarType(carTypes[0]);
+      const response = await fetch('data/car_types.json');
+      if (response.ok) {
+        const carTypes = await response.json();
+        setAvailableCarTypes(carTypes);
+        if (carTypes.length > 0) {
+          setSelectedCarType(carTypes[0]);
+        }
+      } else {
+        throw new Error('Failed to load car types');
       }
     } catch (error) {
       console.error('車種読み込みエラー:', error);
@@ -72,20 +75,17 @@ export default function CarAnalysisDashboard() {
   const loadAvailableFiles = async (carType) => {
     try {
       if (!carType) return;
-      
-      // 実際のデータファイルを検索 - publicフォルダ配下のパスに修正
-      const files = [
-        {
-          path: 'rc_f_data.json', // JSON形式のデータファイル
-          displayName: '2025年06月18日データ (79台)',
-          date: '2025-06-18'
+
+      const response = await fetch('data/car_files.json');
+      if (response.ok) {
+        const fileMap = await response.json();
+        const files = fileMap[carType] || [];
+        setAvailableFiles(files);
+        if (files.length > 0) {
+          setSelectedFile(files[0].path);
         }
-      ];
-      
-      setAvailableFiles(files);
-      // デフォルトで最初のファイルを選択
-      if (files.length > 0) {
-        setSelectedFile(files[0].path);
+      } else {
+        throw new Error('Failed to load file list');
       }
     } catch (error) {
       console.error('ファイル読み込みエラー:', error);
@@ -101,7 +101,7 @@ export default function CarAnalysisDashboard() {
       
       // JSONファイルとCSVファイルの両方に対応
       try {
-        const response = await fetch(`/data/${filePath}`);
+        const response = await fetch(`data/${filePath}`);
         if (response.ok) {
           const contentType = response.headers.get('content-type');
           
@@ -179,12 +179,12 @@ export default function CarAnalysisDashboard() {
         } else {
           console.error(`ファイルが見つかりません: ${filePath}`);
           setLoading(false);
-          alert(`データファイルが見つかりません: ${filePath}\n\nファイルパス: /data/${filePath}`);
+          alert(`データファイルが見つかりません: ${filePath}\n\nファイルパス: data/${filePath}`);
         }
       } catch (error) {
         console.error('ファイル読み込みエラー:', error);
         setLoading(false);
-        alert(`データファイルの読み込み中にエラーが発生しました。\n\nエラー: ${error.message}\nファイルパス: /data/${filePath}`);
+        alert(`データファイルの読み込み中にエラーが発生しました。\n\nエラー: ${error.message}\nファイルパス: data/${filePath}`);
       }
     } catch (error) {
       console.error('loadSelectedFile エラー:', error);
