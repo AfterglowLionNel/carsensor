@@ -101,7 +101,8 @@ class CarAnalysisSystem:
     
     def find_car_data_file(self, car_name, use_latest=True):
         """車種データファイル検索"""
-        scraped_dir = self.project_root / 'data' / 'scraped'
+        from src.utils import get_scraped_dir
+        scraped_dir = get_scraped_dir(self.project_root)
         car_dirs = list(scraped_dir.glob(f"*{car_name}*"))
         
         if not car_dirs:
@@ -147,7 +148,8 @@ class CarAnalysisSystem:
     
     def select_data_file_interactive(self):
         """インタラクティブファイル選択"""
-        scraped_dir = self.project_root / 'data' / 'scraped'
+        from src.utils import get_scraped_dir
+        scraped_dir = get_scraped_dir(self.project_root)
         
         if not scraped_dir.exists():
             print("スクレイピングデータが見つかりません")
@@ -268,7 +270,8 @@ class CarAnalysisSystem:
     
     def list_available_data(self):
         """利用可能データ一覧表示"""
-        scraped_dir = self.project_root / 'data' / 'scraped'
+        from src.utils import get_scraped_dir
+        scraped_dir = get_scraped_dir(self.project_root)
         
         if not scraped_dir.exists():
             print("スクレイピングデータが見つかりません")

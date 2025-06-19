@@ -46,3 +46,16 @@ def test_car_scraper_output_dir(tmp_path):
     scraper = CarScraper(output_dir=tmp_path)
     assert scraper.output_dir == tmp_path
     assert scraper.output_dir.exists()
+
+from src.utils import get_scraped_dir
+
+
+def test_get_scraped_dir(tmp_path):
+    project_root = tmp_path
+    fallback = project_root / 'src' / 'scraper' / 'data' / 'scraped'
+    fallback.mkdir(parents=True)
+    assert get_scraped_dir(project_root) == fallback
+
+    default = project_root / 'data' / 'scraped'
+    default.mkdir(parents=True)
+    assert get_scraped_dir(project_root) == default

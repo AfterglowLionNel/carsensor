@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 def find_latest_data():
     """最新のRC Fデータファイルを検索"""
     project_root = Path(__file__).parent.parent
-    scraped_dir = project_root / 'data' / 'scraped' / 'F'
+    from src.utils import get_scraped_dir
+    scraped_dir = get_scraped_dir(project_root) / 'F'
     
     if not scraped_dir.exists():
         logger.error(f"データディレクトリが存在しません: {scraped_dir}")
