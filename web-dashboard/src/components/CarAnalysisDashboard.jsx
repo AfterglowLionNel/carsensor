@@ -54,7 +54,9 @@ export default function CarAnalysisDashboard() {
   const loadAvailableCarTypes = async () => {
     try {
       setCarTypeLoading(true);
+      7a601a-codex/車両選択プルダウンに車種が表示されない問題を確認
       const response = await fetch('data/car_types.json');
+      main
       if (response.ok) {
         const carTypes = await response.json();
         setAvailableCarTypes(carTypes);
@@ -75,8 +77,9 @@ export default function CarAnalysisDashboard() {
   const loadAvailableFiles = async (carType) => {
     try {
       if (!carType) return;
-
+      7a601a-codex/車両選択プルダウンに車種が表示されない問題を確認
       const response = await fetch('data/car_files.json');
+      main
       if (response.ok) {
         const fileMap = await response.json();
         const files = fileMap[carType] || [];
