@@ -147,7 +147,11 @@ class CarAnalysisGUI:
         self.car_listbox.delete(0, tk.END)
         self.available_cars = {}
         
-        scraped_dir = project_root / 'data' / 'scraped'
+        # Determine scraped data directory. Prefer 'data/scraped' at the
+        # project root, but fall back to the bundled sample data under
+        # src/scraper if the directory doesn't exist.
+        from src.utils import get_scraped_dir
+        scraped_dir = get_scraped_dir(project_root)
         if not scraped_dir.exists():
             self.car_listbox.insert(tk.END, "スクレイピングデータがありません")
             return
