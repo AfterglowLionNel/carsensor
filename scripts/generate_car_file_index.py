@@ -2,7 +2,12 @@ import json
 from pathlib import Path
 import shutil
 
-DATA_ROOT = Path(__file__).resolve().parent.parent / 'src' / 'scraper' / 'data' / 'scraped'
+# Prefer a top-level data directory when present
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_ROOT = PROJECT_ROOT / 'data' / 'scraped'
+if not DATA_ROOT.exists():
+    # Fallback to the legacy location under src/scraper
+    DATA_ROOT = PROJECT_ROOT / 'src' / 'scraper' / 'data' / 'scraped'
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / 'web-dashboard' / 'public' / 'data'
 
 

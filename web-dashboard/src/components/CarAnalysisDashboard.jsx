@@ -51,7 +51,7 @@ export default function CarAnalysisDashboard() {
   const loadAvailableCarTypes = async () => {
     try {
       setCarTypeLoading(true);
-      const res = await fetch('/data/car_file_index.json');
+      const res = await fetch('data/car_file_index.json');
       if (!res.ok) throw new Error('index not found');
       const index = await res.json();
       setCarFileIndex(index);
@@ -90,7 +90,7 @@ export default function CarAnalysisDashboard() {
       
       // JSONファイルとCSVファイルの両方に対応
       try {
-        const response = await fetch(`/data/${filePath}`);
+        const response = await fetch(`data/${filePath}`);
         if (response.ok) {
           const contentType = response.headers.get('content-type');
           
@@ -168,12 +168,12 @@ export default function CarAnalysisDashboard() {
         } else {
           console.error(`ファイルが見つかりません: ${filePath}`);
           setLoading(false);
-          alert(`データファイルが見つかりません: ${filePath}\n\nファイルパス: /data/${filePath}`);
+          alert(`データファイルが見つかりません: ${filePath}\n\nファイルパス: data/${filePath}`);
         }
       } catch (error) {
         console.error('ファイル読み込みエラー:', error);
         setLoading(false);
-        alert(`データファイルの読み込み中にエラーが発生しました。\n\nエラー: ${error.message}\nファイルパス: /data/${filePath}`);
+        alert(`データファイルの読み込み中にエラーが発生しました。\n\nエラー: ${error.message}\nファイルパス: data/${filePath}`);
       }
     } catch (error) {
       console.error('loadSelectedFile エラー:', error);
