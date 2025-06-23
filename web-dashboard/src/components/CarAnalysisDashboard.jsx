@@ -42,49 +42,42 @@ export default function CarAnalysisDashboard() {
   // 車種とファイル選択の状態を追加
   const [selectedCarType, setSelectedCarType] = useState('');
   const [selectedFile, setSelectedFile] = useState('');
-  const [availableCarTypes, setAvailableCarTypes] = useState(['F']); // RC Fのデフォルト
+  const [availableCarTypes, setAvailableCarTypes] = useState([]);
   const [availableFiles, setAvailableFiles] = useState([]);
   const [carTypeLoading, setCarTypeLoading] = useState(false);
+  const [carFileIndex, setCarFileIndex] = useState({});
 
   // 利用可能な車種を読み込む関数
   const loadAvailableCarTypes = async () => {
     try {
       setCarTypeLoading(true);
-      // デモ用のデータセット
-      const carTypes = ['F']; // RC F
+      const res = await fetch('/data/car_file_index.json');
+      if (!res.ok) throw new Error('index not found');
+      const index = await res.json();
+      setCarFileIndex(index);
+      const carTypes = Object.keys(index).map((dir) => ({ dir, display: dir }));
       setAvailableCarTypes(carTypes);
-      // デフォルトで RC F を選択
       if (carTypes.length > 0) {
-        setSelectedCarType(carTypes[0]);
+        setSelectedCarType(carTypes[0].dir);
       }
     } catch (error) {
       console.error('車種読み込みエラー:', error);
+      setAvailableCarTypes([]);
     } finally {
       setCarTypeLoading(false);
     }
   };
 
   // 利用可能なファイルを読み込む関数
-  const loadAvailableFiles = async (carType) => {
-    try {
-      if (!carType) return;
-      
-      // 実際のデータファイルを検索 - publicフォルダ配下のパスに修正
-      const files = [
-        {
-          path: 'rc_f_data.json', // JSON形式のデータファイル
-          displayName: '2025年06月18日データ (79台)',
-          date: '2025-06-18'
-        }
-      ];
-      
-      setAvailableFiles(files);
-      // デフォルトで最初のファイルを選択
-      if (files.length > 0) {
-        setSelectedFile(files[0].path);
-      }
-    } catch (error) {
-      console.error('ファイル読み込みエラー:', error);
+  const loadAvailableFiles = (carType) => {
+    if (!carType) return;
+    let files = carFileIndex[carType] ? [...carFileIndex[carType]] : [];
+    if (carType === 'F') {
+      files.unshift({ path: 'rc_f_data.json', displayName: 'RC F 統合データ (JSON)', isJson: true });
+    }
+    setAvailableFiles(files);
+    if (files.length > 0) {
+      setSelectedFile(files[0].path);
     }
   };
 
@@ -274,26 +267,23 @@ export default function CarAnalysisDashboard() {
 
   // データソース別処理
   const processedData = useMemo(() => {
-    if (overviewMode === 'latest') {
-      const latestData = rawData.filter((item, index, self) => {
-        return index === self.findIndex(t => 
-          t.price === item.price && 
-          t.year === item.year && 
-          t.mileage === item.mileage && 
-          t.正規グレード === item.正規グレード
-        );
+    const removeDuplicates = (data) => {
+      const seen = new Set();
+      return data.filter(item => {
+        const key = `${item.price}-${item.year}-${item.mileage}-${item.正規グレード}`;
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
       });
+    };
+
+    if (overviewMode === 'latest') {
+      const latestData = removeDuplicates(rawData);
       return latestData.slice(-50);
     } else {
-      const allData = rawData.filter((item, index, self) => {
-        return index === self.findIndex(t => 
-          t.price === item.price && 
-          t.year === item.year && 
-          t.mileage === item.mileage && 
-          t.正規グレード === item.正規グレード
-        );
-      });
-      return allData;
+      return removeDuplicates(rawData);
     }
   }, [rawData, overviewMode]);
 
@@ -330,10 +320,10 @@ export default function CarAnalysisDashboard() {
 
   // 価格推移データの生成（日付モード対応）
   const trendData = useMemo(() => {
-    if (filteredData.length === 0) return [];
+    if (rawData.length === 0) return [];
     
     const grouped = {};
-    filteredData.forEach(item => {
+    rawData.forEach(item => {
       const dateStr = getDateFromData(item, trendDateMode);
       let key;
       
@@ -367,7 +357,7 @@ export default function CarAnalysisDashboard() {
         };
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredData, timeScale, trendDateMode]);
+  }, [rawData, timeScale, trendDateMode]);
 
   // グレード別分析データ
   const gradeAnalysisData = useMemo(() => {

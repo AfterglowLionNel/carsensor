@@ -10,6 +10,7 @@ import json
 import os
 import re
 from pathlib import Path
+import subprocess
 from datetime import datetime
 import logging
 
@@ -318,7 +319,10 @@ def main():
         logger.info("主要グレード分布:")
         for grade, count in grade_counts.items():
             logger.info(f"  {grade}: {count}件")
-        
+
+        # 車種・ファイルインデックス生成
+        subprocess.run(["python", str(Path(__file__).parent / "generate_car_file_index.py")], check=True)
+
         return True
         
     except Exception as e:
