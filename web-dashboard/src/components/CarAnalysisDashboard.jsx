@@ -39,11 +39,14 @@ export default function CarAnalysisDashboard() {
   const [selectedCarDetail, setSelectedCarDetail] = useState(null);
   const [showCarDetailModal, setShowCarDetailModal] = useState(false);
 
+  // 環境変数からデフォルトの車種ディレクトリを取得
+  const envCarDir = process.env.REACT_APP_CAR_DIR || '';
+
   // 車種とファイル選択の状態を追加
-  const [selectedCarType, setSelectedCarType] = useState('');
-  const [selectedFile, setSelectedFile] = useState('');
-  const [availableCarTypes, setAvailableCarTypes] = useState(['F']); // RC Fのデフォルト
-  const [availableFiles, setAvailableFiles] = useState([]);
+  const [selectedCarType, setSelectedCarType] = useState(envCarDir);
+  const [selectedFile, setSelectedFile] = useState(envCarDir ? `${envCarDir}_data.json` : '');
+  const [availableCarTypes, setAvailableCarTypes] = useState(envCarDir ? [envCarDir] : ['F']);
+  const [availableFiles, setAvailableFiles] = useState(envCarDir ? [{ path: `${envCarDir}_data.json`, displayName: `${envCarDir}_data.json` }] : []);
   const [carTypeLoading, setCarTypeLoading] = useState(false);
 
   // ソート設定
@@ -54,12 +57,15 @@ export default function CarAnalysisDashboard() {
   const loadAvailableCarTypes = async () => {
     try {
       setCarTypeLoading(true);
-      // デモ用のデータセット
-      const carTypes = ['F']; // RC F
-      setAvailableCarTypes(carTypes);
-      // デフォルトで RC F を選択
-      if (carTypes.length > 0) {
-        setSelectedCarType(carTypes[0]);
+      if (envCarDir) {
+        setAvailableCarTypes([envCarDir]);
+        setSelectedCarType(envCarDir);
+      } else {
+        const carTypes = ['F'];
+        setAvailableCarTypes(carTypes);
+        if (carTypes.length > 0) {
+          setSelectedCarType(carTypes[0]);
+        }
       }
     } catch (error) {
       console.error('車種読み込みエラー:', error);
@@ -72,20 +78,22 @@ export default function CarAnalysisDashboard() {
   const loadAvailableFiles = async (carType) => {
     try {
       if (!carType) return;
-      
-      // 実際のデータファイルを検索 - publicフォルダ配下のパスに修正
-      const files = [
-        {
-          path: 'rc_f_data.json', // JSON形式のデータファイル
-          displayName: '2025年06月18日データ (79台)',
-          date: '2025-06-18'
+      if (envCarDir) {
+        const f = `${envCarDir}_data.json`;
+        setAvailableFiles([{ path: f, displayName: f }]);
+        setSelectedFile(f);
+      } else {
+        const files = [
+          {
+            path: 'rc_f_data.json',
+            displayName: '2025年06月18日データ (79台)',
+            date: '2025-06-18'
+          }
+        ];
+        setAvailableFiles(files);
+        if (files.length > 0) {
+          setSelectedFile(files[0].path);
         }
-      ];
-      
-      setAvailableFiles(files);
-      // デフォルトで最初のファイルを選択
-      if (files.length > 0) {
-        setSelectedFile(files[0].path);
       }
     } catch (error) {
       console.error('ファイル読み込みエラー:', error);
@@ -259,15 +267,19 @@ export default function CarAnalysisDashboard() {
 
   // 初期化処理
   useEffect(() => {
-    loadAvailableCarTypes();
+    if (envCarDir) {
+      loadSelectedFile(`${envCarDir}_data.json`);
+    } else {
+      loadAvailableCarTypes();
+    }
   }, []);
 
   // 車種選択時の処理
   useEffect(() => {
-    if (selectedCarType) {
+    if (!envCarDir && selectedCarType) {
       loadAvailableFiles(selectedCarType);
     }
-  }, [selectedCarType]);
+  }, [selectedCarType, envCarDir]);
 
   // ファイル選択時の処理
   useEffect(() => {
@@ -740,7 +752,7 @@ export default function CarAnalysisDashboard() {
   }
 
   // データが選択されていない場合の表示
-  if (!selectedCarType || !selectedFile) {
+  if (!selectedFile) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb' }}>
         {/* ヘッダー */}
@@ -776,7 +788,7 @@ export default function CarAnalysisDashboard() {
                     color: '#6b7280', 
                     margin: '4px 0 0 0' 
                   }}>
-                    車種とデータファイルを選択してください
+                  データファイルが指定されていません
                   </p>
                 </div>
               </div>
@@ -869,10 +881,7 @@ export default function CarAnalysisDashboard() {
               marginBottom: '24px',
               maxWidth: '400px'
             }}>
-              {!selectedCarType 
-                ? '上部のドロップダウンから分析したい車種を選択してください。' 
-                : 'データファイルを選択して分析を開始してください。'
-              }
+              データディレクトリを --dir オプションで指定して起動してください
             </p>
             
             {availableCarTypes.length > 0 && (
@@ -958,60 +967,64 @@ export default function CarAnalysisDashboard() {
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              {/* 車種選択ドロップダウン */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
-                  車種:
-                </label>
-                <select
-                  value={selectedCarType}
-                  onChange={(e) => setSelectedCarType(e.target.value)}
-                  disabled={carTypeLoading}
-                  style={{
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    padding: '8px 12px',
-                    fontSize: '14px',
-                    backgroundColor: 'white',
-                    minWidth: '120px'
-                  }}
-                >
-                  <option value="">車種を選択</option>
-                  {availableCarTypes.map(carType => (
-                    <option key={carType} value={carType}>
-                      {carType === 'F' ? 'RC F' : carType}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* ファイル選択ドロップダウン */}
-              {selectedCarType && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {!envCarDir && (
+                <>
+                  {/* 車種選択ドロップダウン */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
-                    データ:
+                    車種:
                   </label>
                   <select
-                    value={selectedFile}
-                    onChange={(e) => setSelectedFile(e.target.value)}
-                    disabled={loading}
+                    value={selectedCarType}
+                    onChange={(e) => setSelectedCarType(e.target.value)}
+                    disabled={carTypeLoading}
                     style={{
                       border: '1px solid #d1d5db',
                       borderRadius: '6px',
                       padding: '8px 12px',
                       fontSize: '14px',
                       backgroundColor: 'white',
-                      minWidth: '200px'
+                      minWidth: '120px'
                     }}
                   >
-                    <option value="">ファイルを選択</option>
-                    {availableFiles.map(file => (
-                      <option key={file.path} value={file.path}>
-                        {file.displayName}
+                    <option value="">車種を選択</option>
+                    {availableCarTypes.map(carType => (
+                      <option key={carType} value={carType}>
+                        {carType === 'F' ? 'RC F' : carType}
                       </option>
                     ))}
                   </select>
                 </div>
+
+                  {/* ファイル選択ドロップダウン */}
+                  {selectedCarType && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
+                        データ:
+                      </label>
+                      <select
+                        value={selectedFile}
+                        onChange={(e) => setSelectedFile(e.target.value)}
+                        disabled={loading}
+                        style={{
+                          border: '1px solid #d1d5db',
+                          borderRadius: '6px',
+                          padding: '8px 12px',
+                          fontSize: '14px',
+                          backgroundColor: 'white',
+                          minWidth: '200px'
+                        }}
+                      >
+                        <option value="">ファイルを選択</option>
+                        {availableFiles.map(file => (
+                          <option key={file.path} value={file.path}>
+                            {file.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* データ品質インジケーター */}

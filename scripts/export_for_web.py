@@ -5,13 +5,16 @@ Web用データエクスポート
 既存のCSV/Excelデータを Web Dashboard 用に変換
 """
 
-import pandas as pd
+import argparse
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from datetime import datetime
-import logging
+
+import pandas as pd
+from src.utils import get_scraped_dir
 
 # ログ設定
 logging.basicConfig(
@@ -20,37 +23,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def find_latest_data():
-    """最新のRC Fデータファイルを検索"""
-    project_root = Path(__file__).parent.parent
-    from src.utils import get_scraped_dir
-    scraped_dir = get_scraped_dir(project_root) / 'F'
-    
-    if not scraped_dir.exists():
-        logger.error(f"データディレクトリが存在しません: {scraped_dir}")
-        return None
-    
-    all_files = []
-    
-    # 日付ディレクトリから全CSVファイルを検索
-    for date_dir in scraped_dir.iterdir():
+def find_csv_files(car_dir: Path):
+    """Return list of CSV files inside a scraped car directory."""
+    if not car_dir.exists():
+        logger.error(f"データディレクトリが存在しません: {car_dir}")
+        return []
+
+    files = []
+    for date_dir in car_dir.iterdir():
         if date_dir.is_dir():
-            csv_files = list(date_dir.glob('*.csv'))
-            all_files.extend(csv_files)
-    
-    if not all_files:
-        logger.warning("CSVファイルが見つかりません")
+            files.extend(date_dir.glob('*.csv'))
+    return sorted(files)
+
+def load_dataframe_from_dir(car_dir: Path):
+    """Load and concatenate all CSV files under ``car_dir``."""
+    files = find_csv_files(car_dir)
+    if not files:
         return None
-    
-    # ファイル名からNo番号を抽出してソート（最新を取得）
-    def get_file_number(file_path):
-        match = re.search(r'\.No(\d+)\.csv$', file_path.name)
-        return int(match.group(1)) if match else 0
-    
-    latest_file = max(all_files, key=lambda f: (f.stat().st_mtime, get_file_number(f)))
-    logger.info(f"最新ファイル: {latest_file}")
-    
-    return latest_file
+
+    dfs = []
+    for f in files:
+        try:
+            dfs.append(pd.read_csv(f, encoding='utf-8-sig'))
+        except Exception as e:
+            logger.warning(f"CSV読み込みエラー {f}: {e}")
+    if not dfs:
+        return None
+    return pd.concat(dfs, ignore_index=True)
 
 def clean_and_validate_data(df):
     """データのクリーニングと検証"""
@@ -268,65 +267,66 @@ def export_metadata(df, output_dir):
     except Exception as e:
         logger.error(f"メタデータ生成エラー: {e}")
 
-def main():
+def main(argv=None):
     """メイン処理"""
+    parser = argparse.ArgumentParser(description="Web用データエクスポート")
+    parser.add_argument(
+        "--car-dir",
+        help="data/scraped 内の車種ディレクトリ名",
+        default="F",
+    )
+    args = parser.parse_args(argv)
+
     logger.info("Web用データエクスポート開始")
-    
-    # プロジェクトルート設定
+
     project_root = Path(__file__).parent.parent
-    output_dir = project_root / 'web-dashboard' / 'public' / 'data'
-    
-    # 出力ディレクトリ作成
+    output_dir = project_root / "web-dashboard" / "public" / "data"
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    car_dir = get_scraped_dir(project_root) / args.car_dir
+
+    df = load_dataframe_from_dir(car_dir)
+    if df is None:
+        logger.error("CSVファイルが見つかりません")
+        return False
+
+    logger.info(f"CSV読込件数: {len(df)}")
+
     try:
-        # 最新データファイルを検索
-        latest_file = find_latest_data()
-        if not latest_file:
-            logger.error("データファイルが見つかりません")
-            return False
-        
-        # CSVデータ読み込み
-        logger.info(f"データ読み込み: {latest_file}")
-        df = pd.read_csv(latest_file, encoding='utf-8-sig')
-        
-        # データクリーニング
         cleaned_df = clean_and_validate_data(df)
-        
         if len(cleaned_df) == 0:
             logger.error("有効なデータがありません")
             return False
-        
-        # Web用データ拡張
+
         enhanced_df = enhance_data_for_web(cleaned_df)
-        
-        # JSONエクスポート
-        json_output_path = output_dir / 'rc_f_data.json'
+
+        json_output_path = output_dir / f"{args.car_dir}_data.json"
         if not export_to_json(enhanced_df, json_output_path):
             return False
-        
-        # メタデータ生成
+
         export_metadata(enhanced_df, output_dir)
-        
-        # サマリー情報の表示
+
         logger.info("=" * 50)
         logger.info("エクスポート完了サマリー")
         logger.info("=" * 50)
-        logger.info(f"ソースファイル: {latest_file.name}")
         logger.info(f"出力ファイル: {json_output_path}")
         logger.info(f"総レコード数: {len(enhanced_df)}")
         logger.info(f"グレード数: {enhanced_df['正規グレード'].nunique()}")
-        logger.info(f"年式範囲: {enhanced_df['年式数値'].min()}-{enhanced_df['年式数値'].max()}")
-        logger.info(f"価格範囲: {enhanced_df['価格数値'].min():.1f}-{enhanced_df['価格数値'].max():.1f}万円")
-        
-        # グレード分布Top5
+        logger.info(
+            f"年式範囲: {enhanced_df['年式数値'].min()}-{enhanced_df['年式数値'].max()}"
+        )
+        logger.info(
+            f"価格範囲: {enhanced_df['価格数値'].min():.1f}-{enhanced_df['価格数値'].max():.1f}万円"
+        )
+
         grade_counts = enhanced_df['正規グレード'].value_counts().head(5)
         logger.info("主要グレード分布:")
         for grade, count in grade_counts.items():
             logger.info(f"  {grade}: {count}件")
-        
+
         return True
-        
+
     except Exception as e:
         logger.error(f"エクスポート処理でエラーが発生しました: {e}")
         import traceback
