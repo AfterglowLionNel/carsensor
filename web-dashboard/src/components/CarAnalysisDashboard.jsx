@@ -39,6 +39,10 @@ export default function CarAnalysisDashboard() {
   const [selectedCarDetail, setSelectedCarDetail] = useState(null);
   const [showCarDetailModal, setShowCarDetailModal] = useState(false);
 
+  // 複数ファイル用データとアップロードしたディレクトリ名
+  const [allRawData, setAllRawData] = useState([]);
+  const [uploadedDirName, setUploadedDirName] = useState('');
+
   // 環境変数からデフォルトの車種ディレクトリを取得
   const envCarDir = process.env.REACT_APP_CAR_DIR || '';
 
@@ -121,6 +125,8 @@ export default function CarAnalysisDashboard() {
             // JSONデータを処理
             const processedData = processCarData(jsonData);
             setRawData(processedData);
+            setAllRawData(processedData);
+            setUploadedDirName(filePath.split('/')[0] || '');
             setFileUploaded(true);
             setLastUpdate(new Date().toLocaleString());
             
@@ -152,6 +158,8 @@ export default function CarAnalysisDashboard() {
                 console.log('CSV実データ読み込み:', results.data.length, '件');
                 const processedData = processCarData(results.data);
                 setRawData(processedData);
+                setAllRawData(processedData);
+                setUploadedDirName(filePath.split('/')[0] || '');
                 setFileUploaded(true);
                 setLastUpdate(new Date().toLocaleString());
                 
@@ -221,91 +229,75 @@ export default function CarAnalysisDashboard() {
   // サンプルデータ生成を削除（実データのみ使用）
   // generateSampleData関数は削除
 
-  // ファイルアップロード処理（CSV/JSON対応）
+  // ディレクトリアップロード処理（CSV/JSON複数対応）
   const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
 
     setLoading(true);
+    setUploadedDirName(files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : '');
 
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result;
-        if (file.name.toLowerCase().endsWith('.json')) {
-          const jsonData = JSON.parse(text);
-          console.log('アップロードされたJSON:', jsonData.length, '件');
-          const processedData = processCarData(jsonData);
-          setRawData(processedData);
-          setFileUploaded(true);
-          setLastUpdate(new Date().toLocaleString());
-
-          const quality = checkDataQuality(processedData);
-          setDataQuality(quality);
-
-          const uniqueGrades = [...new Set(processedData.map(item =>
-            showNormalizedGrades ? item.正規グレード : item.元グレード
-          ))].filter(Boolean);
-          setSelectedGrades(uniqueGrades);
-
-          const prices = processedData.map(item => item.price).filter(Boolean);
-          if (prices.length > 0) {
-            const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
-            const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
-            setPriceRange([minPrice, maxPrice]);
+    const readFile = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = e.target.result;
+          if (file.name.toLowerCase().endsWith('.json')) {
+            const jsonData = JSON.parse(text);
+            resolve(processCarData(jsonData));
+          } else {
+            Papa.parse(text, {
+              header: true,
+              encoding: 'UTF-8',
+              complete: (results) => resolve(processCarData(results.data)),
+              error: (error) => reject(error)
+            });
           }
-
-          setLoading(false);
-        } else {
-          Papa.parse(text, {
-            header: true,
-            encoding: 'UTF-8',
-            complete: (results) => {
-              console.log('アップロードされたCSV:', results.data.length, '件');
-              const processedData = processCarData(results.data);
-              setRawData(processedData);
-              setFileUploaded(true);
-              setLastUpdate(new Date().toLocaleString());
-
-              const quality = checkDataQuality(processedData);
-              setDataQuality(quality);
-
-              const uniqueGrades = [...new Set(processedData.map(item =>
-                showNormalizedGrades ? item.正規グレード : item.元グレード
-              ))].filter(Boolean);
-              setSelectedGrades(uniqueGrades);
-
-              const prices = processedData.map(item => item.price).filter(Boolean);
-              if (prices.length > 0) {
-                const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
-                const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
-                setPriceRange([minPrice, maxPrice]);
-              }
-
-              setLoading(false);
-            },
-            error: (error) => {
-              console.error('CSV解析エラー:', error);
-              setLoading(false);
-              alert('CSVファイルの読み込みに失敗しました。');
-            }
-          });
+        } catch (err) {
+          reject(err);
         }
-      } catch (err) {
-        console.error('ファイル解析エラー:', err);
+      };
+      reader.onerror = () => reject(new Error('file read error'));
+      reader.readAsText(file);
+    });
+
+    Promise.all(files.map(readFile))
+      .then(dataLists => {
+        setAllRawData(dataLists.flat());
+
+        // 最新のファイルを決定
+        let latestIndex = 0;
+        files.forEach((f, idx) => {
+          if (f.lastModified > files[latestIndex].lastModified) latestIndex = idx;
+        });
+        const latestData = dataLists[latestIndex];
+        setRawData(latestData);
+        setSelectedFile(files[latestIndex].name);
+        setFileUploaded(true);
+        setLastUpdate(new Date().toLocaleString());
+
+        const quality = checkDataQuality(latestData);
+        setDataQuality(quality);
+
+        const uniqueGrades = [...new Set(latestData.map(item =>
+          showNormalizedGrades ? item.正規グレード : item.元グレード
+        ))].filter(Boolean);
+        setSelectedGrades(uniqueGrades);
+
+        const prices = latestData.map(item => item.price).filter(Boolean);
+        if (prices.length > 0) {
+          const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
+          const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
+          setPriceRange([minPrice, maxPrice]);
+        }
+
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('アップロードエラー:', err);
         setLoading(false);
         alert('ファイルの解析に失敗しました。');
-      }
-    };
-
-    reader.onerror = () => {
-      console.error('ファイル読み込みエラー');
-      setLoading(false);
-      alert('ファイルの読み込みに失敗しました。');
-    };
-
-    reader.readAsText(file);
+      });
   };
 
   // 初期化処理
@@ -387,6 +379,28 @@ export default function CarAnalysisDashboard() {
     });
   }, [processedData, selectedGrades, yearRange, mileageMax, priceRange, transmissionFilters, repairHistoryFilter, showNormalizedGrades]);
 
+  // 価格推移用フィルター（複数ファイル対象）
+  const trendFilteredData = useMemo(() => {
+    return allRawData.filter(item => {
+      const targetGrade = showNormalizedGrades ? item.正規グレード : item.元グレード;
+
+      if (selectedGrades.length > 0 && !selectedGrades.includes(targetGrade)) return false;
+      if (item.year < yearRange.min || item.year > yearRange.max) return false;
+      if (item.mileage > mileageMax) return false;
+      if (item.price < priceRange[0] || item.price > priceRange[1]) return false;
+
+      const transmissionCategory = categorizeTransmission(item.ミッション);
+      if (!transmissionFilters[transmissionCategory]) return false;
+
+      if (repairHistoryFilter !== 'all') {
+        if (repairHistoryFilter === 'none' && item.修復歴 !== 'なし') return false;
+        if (repairHistoryFilter === 'exists' && item.修復歴 !== 'あり') return false;
+      }
+
+      return true;
+    });
+  }, [allRawData, selectedGrades, yearRange, mileageMax, priceRange, transmissionFilters, repairHistoryFilter, showNormalizedGrades]);
+
   // 並び替え後のデータ
   const sortedData = useMemo(() => {
     const data = [...filteredData];
@@ -401,10 +415,10 @@ export default function CarAnalysisDashboard() {
 
   // 価格推移データの生成（日付モード対応）
   const trendData = useMemo(() => {
-    if (filteredData.length === 0) return [];
-    
+    if (trendFilteredData.length === 0) return [];
+
     const grouped = {};
-    filteredData.forEach(item => {
+    trendFilteredData.forEach(item => {
       const dateStr = getDateFromData(item, trendDateMode);
       let key;
       
@@ -440,7 +454,7 @@ export default function CarAnalysisDashboard() {
         };
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredData, timeScale, trendDateMode]);
+  }, [trendFilteredData, timeScale, trendDateMode]);
 
   // 価格推移から単純回帰で予測値を生成
   const forecastData = useMemo(() => {
@@ -794,174 +808,24 @@ export default function CarAnalysisDashboard() {
     );
   }
 
-  // データが選択されていない場合の表示
-  if (!selectedFile) {
+  // データがアップロードされていない場合の表示
+  if (!fileUploaded) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb' }}>
-        {/* ヘッダー */}
-        <div style={{ 
-          backgroundColor: 'white', 
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', 
-          borderBottom: '1px solid #e5e7eb' 
-        }}>
-          <div style={{ 
-            maxWidth: '1280px', 
-            margin: '0 auto', 
-            padding: '0 16px' 
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              padding: '16px 0' 
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Car size={32} color="#2563eb" />
-                <div>
-                  <h1 style={{ 
-                    fontSize: '24px', 
-                    fontWeight: 'bold', 
-                    color: '#111827', 
-                    margin: '0' 
-                  }}>
-                    中古車分析ダッシュボード
-                  </h1>
-                  <p style={{ 
-                    fontSize: '14px', 
-                    color: '#6b7280', 
-                    margin: '4px 0 0 0' 
-                  }}>
-                  データファイルが指定されていません
-                  </p>
-                </div>
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                {/* 車種選択 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
-                    車種:
-                  </label>
-                  <select
-                    value={selectedCarType}
-                    onChange={(e) => setSelectedCarType(e.target.value)}
-                    style={{
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      padding: '8px 12px',
-                      fontSize: '14px',
-                      backgroundColor: 'white',
-                      minWidth: '120px'
-                    }}
-                  >
-                    <option value="">車種を選択</option>
-                    {availableCarTypes.map(carType => (
-                      <option key={carType} value={carType}>
-                        {carType === 'F' ? 'RC F' : carType}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* ファイル選択 */}
-                {selectedCarType && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
-                      データ:
-                    </label>
-                    <select
-                      value={selectedFile}
-                      onChange={(e) => setSelectedFile(e.target.value)}
-                      style={{
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        padding: '8px 12px',
-                        fontSize: '14px',
-                        backgroundColor: 'white',
-                        minWidth: '200px'
-                      }}
-                    >
-                      <option value="">ファイルを選択</option>
-                      {availableFiles.map(file => (
-                        <option key={file.path} value={file.path}>
-                          {file.displayName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+      <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ backgroundColor: 'white', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', margin: 0 }}>中古車分析ダッシュボード</h1>
         </div>
-
-        {/* 選択促進メッセージ */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          height: 'calc(100vh - 120px)' 
-        }}>
-          <div style={{ 
-            textAlign: 'center', 
-            backgroundColor: 'white', 
-            padding: '48px', 
-            borderRadius: '12px', 
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' 
-          }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', backgroundColor: 'white', padding: '48px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
             <Car size={64} color="#6b7280" style={{ margin: '0 auto 24px' }} />
-            <h2 style={{ 
-              fontSize: '24px', 
-              fontWeight: '600', 
-              color: '#111827', 
-              marginBottom: '16px' 
-            }}>
-              車種とデータを選択
-            </h2>
-            <p style={{ 
-              fontSize: '16px', 
-              color: '#6b7280', 
-              marginBottom: '24px',
-              maxWidth: '400px'
-            }}>
-              データディレクトリを --dir オプションで指定して起動してください
-            </p>
-            
-            {availableCarTypes.length > 0 && (
-              <div style={{ 
-                padding: '16px', 
-                backgroundColor: '#f9fafb', 
-                borderRadius: '8px',
-                marginTop: '16px'
-              }}>
-                <p style={{ 
-                  fontSize: '14px', 
-                  color: '#374751', 
-                  marginBottom: '8px',
-                  fontWeight: '500'
-                }}>
-                  利用可能な車種:
-                </p>
-                <div style={{ 
-                  display: 'flex', 
-                  flexWrap: 'wrap', 
-                  gap: '8px',
-                  justifyContent: 'center'
-                }}>
-                  {availableCarTypes.map(carType => (
-                    <span key={carType} style={{
-                      padding: '4px 12px',
-                      backgroundColor: '#e5e7eb',
-                      borderRadius: '16px',
-                      fontSize: '14px',
-                      color: '#374751'
-                    }}>
-                      {carType === 'F' ? 'RC F' : carType}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+            <h2 style={{ fontSize: '24px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>ディレクトリを選択</h2>
+            <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '24px' }}>分析に使用するCSVファイルを含むディレクトリを選択してください</p>
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <input type="file" multiple webkitdirectory="true" onChange={handleFileUpload} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+              <button style={{ padding: '12px 24px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>
+                <Upload size={16} /> ディレクトリを選択
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1003,72 +867,13 @@ export default function CarAnalysisDashboard() {
                   color: '#6b7280', 
                   margin: '4px 0 0 0' 
                 }}>
-                  {selectedCarType && `車種: ${selectedCarType}`}
+                  {uploadedDirName && `ディレクトリ: ${uploadedDirName}`}
                   {lastUpdate && ` | 最終更新: ${lastUpdate}`}
                 </p>
               </div>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              {!envCarDir && (
-                <>
-                  {/* 車種選択ドロップダウン */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
-                    車種:
-                  </label>
-                  <select
-                    value={selectedCarType}
-                    onChange={(e) => setSelectedCarType(e.target.value)}
-                    disabled={carTypeLoading}
-                    style={{
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      padding: '8px 12px',
-                      fontSize: '14px',
-                      backgroundColor: 'white',
-                      minWidth: '120px'
-                    }}
-                  >
-                    <option value="">車種を選択</option>
-                    {availableCarTypes.map(carType => (
-                      <option key={carType} value={carType}>
-                        {carType === 'F' ? 'RC F' : carType}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                  {/* ファイル選択ドロップダウン */}
-                  {selectedCarType && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <label style={{ fontSize: '14px', fontWeight: '500', color: '#374751' }}>
-                        データ:
-                      </label>
-                      <select
-                        value={selectedFile}
-                        onChange={(e) => setSelectedFile(e.target.value)}
-                        disabled={loading}
-                        style={{
-                          border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          padding: '8px 12px',
-                          fontSize: '14px',
-                          backgroundColor: 'white',
-                          minWidth: '200px'
-                        }}
-                      >
-                        <option value="">ファイルを選択</option>
-                        {availableFiles.map(file => (
-                          <option key={file.path} value={file.path}>
-                            {file.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </>
-              )}
 
               {/* データ品質インジケーター */}
               {dataQuality && (
@@ -1108,6 +913,8 @@ export default function CarAnalysisDashboard() {
                 <input
                   type="file"
                   accept=".csv,.json"
+                  multiple
+                  webkitdirectory="true"
                   onChange={handleFileUpload}
                   style={{
                     position: 'absolute',
@@ -1136,18 +943,15 @@ export default function CarAnalysisDashboard() {
               </div>
               
               <span style={{ fontSize: '14px', color: '#6b7280' }}>
-                {selectedCarType ? (
-                  <>
-                    表示中: <span style={{ fontWeight: '600', color: '#3b82f6' }}>{filteredData.length}</span>件 / 
-                    全<span style={{ fontWeight: '600' }}>{rawData.length}</span>件
-                    {filteredData.length !== rawData.length && (
-                      <span style={{ color: '#ef4444', marginLeft: '8px' }}>
-                        ({rawData.length - filteredData.length}件フィルター中)
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  '車種を選択してください'
+                {uploadedDirName && (
+                  <>ディレクトリ: <span style={{ fontWeight: '600' }}>{uploadedDirName}</span> | </>
+                )}
+                表示中: <span style={{ fontWeight: '600', color: '#3b82f6' }}>{filteredData.length}</span>件 /
+                全<span style={{ fontWeight: '600' }}>{rawData.length}</span>件
+                {filteredData.length !== rawData.length && (
+                  <span style={{ color: '#ef4444', marginLeft: '8px' }}>
+                    ({rawData.length - filteredData.length}件フィルター中)
+                  </span>
                 )}
               </span>
             </div>
