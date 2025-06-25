@@ -221,48 +221,91 @@ export default function CarAnalysisDashboard() {
   // サンプルデータ生成を削除（実データのみ使用）
   // generateSampleData関数は削除
 
-  // CSVファイルアップロード処理
+  // ファイルアップロード処理（CSV/JSON対応）
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     setLoading(true);
-    Papa.parse(file, {
-      header: true,
-      encoding: 'UTF-8',
-      complete: (results) => {
-        console.log('アップロードされたCSV:', results.data);
-        const processedData = processCarData(results.data);
-        setRawData(processedData);
-        setFileUploaded(true);
-        setLastUpdate(new Date().toLocaleString());
-        
-        // データ品質チェック
-        const quality = checkDataQuality(processedData);
-        setDataQuality(quality);
-        
-        // 初期フィルター設定
-        const uniqueGrades = [...new Set(processedData.map(item => 
-          showNormalizedGrades ? item.正規グレード : item.元グレード
-        ))].filter(Boolean);
-        setSelectedGrades(uniqueGrades);
-        
-        // 価格範囲を自動調整
-        const prices = processedData.map(item => item.price).filter(Boolean);
-        if (prices.length > 0) {
-          const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
-          const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
-          setPriceRange([minPrice, maxPrice]);
+
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        if (file.name.toLowerCase().endsWith('.json')) {
+          const jsonData = JSON.parse(text);
+          console.log('アップロードされたJSON:', jsonData.length, '件');
+          const processedData = processCarData(jsonData);
+          setRawData(processedData);
+          setFileUploaded(true);
+          setLastUpdate(new Date().toLocaleString());
+
+          const quality = checkDataQuality(processedData);
+          setDataQuality(quality);
+
+          const uniqueGrades = [...new Set(processedData.map(item =>
+            showNormalizedGrades ? item.正規グレード : item.元グレード
+          ))].filter(Boolean);
+          setSelectedGrades(uniqueGrades);
+
+          const prices = processedData.map(item => item.price).filter(Boolean);
+          if (prices.length > 0) {
+            const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
+            const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
+            setPriceRange([minPrice, maxPrice]);
+          }
+
+          setLoading(false);
+        } else {
+          Papa.parse(text, {
+            header: true,
+            encoding: 'UTF-8',
+            complete: (results) => {
+              console.log('アップロードされたCSV:', results.data.length, '件');
+              const processedData = processCarData(results.data);
+              setRawData(processedData);
+              setFileUploaded(true);
+              setLastUpdate(new Date().toLocaleString());
+
+              const quality = checkDataQuality(processedData);
+              setDataQuality(quality);
+
+              const uniqueGrades = [...new Set(processedData.map(item =>
+                showNormalizedGrades ? item.正規グレード : item.元グレード
+              ))].filter(Boolean);
+              setSelectedGrades(uniqueGrades);
+
+              const prices = processedData.map(item => item.price).filter(Boolean);
+              if (prices.length > 0) {
+                const minPrice = Math.floor(Math.min(...prices) / 100) * 100;
+                const maxPrice = Math.ceil(Math.max(...prices) / 100) * 100;
+                setPriceRange([minPrice, maxPrice]);
+              }
+
+              setLoading(false);
+            },
+            error: (error) => {
+              console.error('CSV解析エラー:', error);
+              setLoading(false);
+              alert('CSVファイルの読み込みに失敗しました。');
+            }
+          });
         }
-        
+      } catch (err) {
+        console.error('ファイル解析エラー:', err);
         setLoading(false);
-      },
-      error: (error) => {
-        console.error('CSV解析エラー:', error);
-        setLoading(false);
-        alert('CSVファイルの読み込みに失敗しました。');
+        alert('ファイルの解析に失敗しました。');
       }
-    });
+    };
+
+    reader.onerror = () => {
+      console.error('ファイル読み込みエラー');
+      setLoading(false);
+      alert('ファイルの読み込みに失敗しました。');
+    };
+
+    reader.readAsText(file);
   };
 
   // 初期化処理
@@ -1064,7 +1107,7 @@ export default function CarAnalysisDashboard() {
               <div style={{ position: 'relative' }}>
                 <input
                   type="file"
-                  accept=".csv"
+                  accept=".csv,.json"
                   onChange={handleFileUpload}
                   style={{
                     position: 'absolute',
@@ -1088,7 +1131,7 @@ export default function CarAnalysisDashboard() {
                   fontSize: '14px'
                 }}>
                   <Upload size={16} />
-                  CSVアップロード
+                  ファイルアップロード
                 </button>
               </div>
               
