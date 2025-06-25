@@ -47,7 +47,7 @@ def test_car_scraper_output_dir(tmp_path):
     assert scraper.output_dir == tmp_path
     assert scraper.output_dir.exists()
 
-from src.utils import get_scraped_dir
+from src.utils import get_scraped_dir, get_car_directories
 
 
 def test_get_scraped_dir(tmp_path):
@@ -59,3 +59,13 @@ def test_get_scraped_dir(tmp_path):
     default = project_root / 'data' / 'scraped'
     default.mkdir(parents=True)
     assert get_scraped_dir(project_root) == default
+
+
+def test_get_car_directories(tmp_path):
+    root = tmp_path
+    scraped = root / 'data' / 'scraped'
+    (scraped / 'A').mkdir(parents=True)
+    (scraped / 'B').mkdir(parents=True)
+    dirs = get_car_directories(root)
+    names = [n for n, _ in dirs]
+    assert names == ['A', 'B']

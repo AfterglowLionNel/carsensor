@@ -20,11 +20,16 @@ sys.path.append(str(project_root))
 
 from src.scraper.car_scraper import CarScraper
 from src.analyzer.grade_normalizer import GradeNormalizer
+from src.utils import get_car_directories
 
 class CarAnalysisSystem:
     def __init__(self):
         self.project_root = project_root
         self.setup_logging()
+
+    def available_car_dirs(self):
+        """Return available car directory tuples ``(name, path)``."""
+        return get_car_directories(self.project_root)
         
     def setup_logging(self):
         """ログ設定"""
@@ -54,11 +59,13 @@ class CarAnalysisSystem:
             self.logger.warning("スクレイピングでデータが取得できませんでした")
             return []
     
-    def analyze_data(self, data_path=None, car_name=None, use_latest=False):
+    def analyze_data(self, data_path=None, car_name=None, car_dir=None, use_latest=False):
         """データ分析"""
         # 分析対象ファイルの特定
         if data_path:
             target_file = Path(data_path)
+        elif car_dir:
+            target_file = self.find_car_data_in_dir(Path(car_dir), use_latest)
         elif car_name:
             target_file = self.find_car_data_file(car_name, use_latest)
         else:
@@ -125,6 +132,27 @@ class CarAnalysisSystem:
             return max(all_files, key=lambda f: f.stat().st_mtime)
         else:
             # 選択肢を表示
+            return self.select_from_files(all_files)
+
+    def find_car_data_in_dir(self, car_dir: Path, use_latest=True):
+        """Search a directory for car data files."""
+        if not car_dir.exists():
+            self.logger.error(f"ディレクトリが見つかりません: {car_dir}")
+            return None
+
+        all_files = []
+        for date_dir in car_dir.iterdir():
+            if date_dir.is_dir():
+                csv_files = list(date_dir.glob('*.csv'))
+                all_files.extend(csv_files)
+
+        if not all_files:
+            self.logger.error(f"CSVファイルが見つかりません: {car_dir}")
+            return None
+
+        if use_latest:
+            return max(all_files, key=lambda f: f.stat().st_mtime)
+        else:
             return self.select_from_files(all_files)
     
     def select_from_files(self, files):
@@ -325,7 +353,15 @@ class CarAnalysisSystem:
 
 def main():
     """メイン関数"""
-    parser = argparse.ArgumentParser(description='統合中古車分析システム')
+    car_dirs = get_car_directories(project_root)
+    epilog = ""
+    if car_dirs:
+        lines = ["利用可能な車種ディレクトリ:"]
+        for name, path in car_dirs:
+            lines.append(f"  {name}: {path}")
+        epilog = "\n".join(lines)
+
+    parser = argparse.ArgumentParser(description='統合中古車分析システム', epilog=epilog)
     parser.add_argument('--scrape', action='store_true', help='スクレイピング実行')
     parser.add_argument('--analyze', action='store_true', help='分析実行')
     parser.add_argument('--all', action='store_true', help='全工程実行')
@@ -333,6 +369,7 @@ def main():
     
     parser.add_argument('--path', help='分析対象ファイルパス')
     parser.add_argument('--car', help='車種名')
+    parser.add_argument('--dir', help='車種データディレクトリパス')
     parser.add_argument('--latest', action='store_true', help='最新データ使用')
     parser.add_argument('--list', action='store_true', help='利用可能データ一覧')
     
@@ -354,6 +391,7 @@ def main():
             system.analyze_data(
                 data_path=args.path,
                 car_name=args.car,
+                car_dir=args.dir,
                 use_latest=args.latest
             )
         elif args.list:
