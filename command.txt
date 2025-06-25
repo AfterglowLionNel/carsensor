@@ -16,12 +16,6 @@ python scripts\main.py --all
 # 6. 利用可能データ一覧表示
 python scripts\main.py --list
 
-
-
-
-
-
-
 # 7. 特定車種の最新データを分析
 python scripts\main.py --analyze --car "GRヤリス" --latest
 
@@ -31,8 +25,6 @@ python scripts\main.py --analyze --path "data\scraped\GRヤリス\2025年06月17
 # 9. 特定車種（最新でない場合は選択画面）
 python scripts\main.py --analyze --car "レヴォーグ"
 
-
-
 # Step 1: まず利用可能なデータを確認
 python scripts\main.py --list
 
@@ -41,3 +33,6 @@ python scripts\main.py --scrape
 
 # Step 3: 分析実行
 python scripts\main.py --analyze --latest
+
+# 10. Reactダッシュボードをデータディレクトリ指定で起動
+cd web-dashboard && npm run start-dir --dir F
